@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+type Tone = "calm" | "honest" | "direct" | "hopeful" | "chaotic";
+
 type Message = {
   from: "me" | "future me";
   text: string;
@@ -10,23 +12,11 @@ function fallback(decision: string, horizon: string) {
   return {
     messages: [
       { from: "me", text: decision || "Should I do this?", time: "now" },
-      {
-        from: "future me",
-        text: "If you have to ask, you probably already know.",
-        time: "soon"
-      },
-      {
-        from: "me",
-        text: "Yeah…",
-        time: "soon"
-      },
-      {
-        from: "future me",
-        text: `Give it ${horizon || "2 weeks"}. Clarity comes when you're not chasing it.`,
-        time: horizon || "2 weeks"
-      }
+      { from: "future me", text: "Pause first. Clarity usually arrives before regret.", time: "soon" },
+      { from: "me", text: "So what now?", time: "soon" },
+      { from: "future me", text: `Give it ${horizon || "2 weeks"}.`, time: horizon || "2 weeks" }
     ],
-    caption: "Clarity doesn’t shout."
+    caption: "A quieter kind of answer."
   };
 }
 
@@ -38,7 +28,6 @@ export async function POST(request: Request) {
   const horizon = String(body.horizon ?? "2 weeks").trim();
 
   const apiKey = process.env.GROQ_API_KEY;
-
   if (!apiKey) {
     const fb = fallback(decision, horizon);
     return NextResponse.json({
@@ -52,27 +41,14 @@ export async function POST(request: Request) {
   const systemPrompt = `
 You are a future version of the user.
 
-Your job is NOT to be nice.
-Your job is to be accurate, observant, and slightly unsettling in a smart way.
-
 Style rules:
-- extremely concise (short messages)
-- sounds like a real private chat
-- avoid generic advice completely
-- no clichés (NO "follow your heart", "trust the process", etc.)
-- sometimes be brutally honest
-- sometimes be calm and wise
-- occasionally say less than expected (silence = power)
-- create a subtle emotional impact
-
-Structure:
+- short, real, sharp
+- not generic
+- not cheesy
 - 3–4 messages total
-- must feel like a real conversation, not AI text
 - the last message should feel like a realization
-
-Important:
-The future self KNOWS what happened.
-Hint at consequences without overexplaining.
+- make it shareable
+- no extra explanation
 
 Return ONLY valid JSON:
 {
@@ -92,9 +68,7 @@ Decision: ${decision || "Should I do this?"}
 Tone: ${tone}
 Time jump: ${horizon}
 
-Make it feel real, slightly uncomfortable, and insightful.
-Avoid obvious answers.
-Make it something people would screenshot and share.
+Make it feel smart, slightly unsettling, and very human.
 `;
 
   try {
@@ -111,53 +85,38 @@ Make it something people would screenshot and share.
           { role: "user", content: userPrompt }
         ],
         temperature: 0.9,
-        max_tokens: 400
+        max_tokens: 450
       })
     });
 
     if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.error("Groq error:", response.status, text);
       const fb = fallback(decision, horizon);
-      return NextResponse.json({
-        title: "Future Me",
-        horizon,
-        tone,
-        ...fb
-      });
+      return NextResponse.json({ title: "Future Me", horizon, tone, ...fb });
     }
 
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content ?? "";
 
-    let parsed;
-
+    let parsed: any;
     try {
       parsed = JSON.parse(content);
     } catch {
       const fb = fallback(decision, horizon);
-      return NextResponse.json({
-        title: "Future Me",
-        horizon,
-        tone,
-        ...fb
-      });
+      return NextResponse.json({ title: "Future Me", horizon, tone, ...fb });
     }
 
     return NextResponse.json({
       title: parsed.title ?? "Future Me",
       horizon: parsed.horizon ?? horizon,
       tone: parsed.tone ?? tone,
-      messages: Array.isArray(parsed.messages)
-        ? parsed.messages
-        : fallback(decision, horizon).messages,
+      messages: Array.isArray(parsed.messages) ? parsed.messages : fallback(decision, horizon).messages,
       caption: parsed.caption ?? fallback(decision, horizon).caption
     });
-  } catch {
+  } catch (err) {
+    console.error("Route error:", err);
     const fb = fallback(decision, horizon);
-    return NextResponse.json({
-      title: "Future Me",
-      horizon,
-      tone,
-      ...fb
-    });
+    return NextResponse.json({ title: "Future Me", horizon, tone, ...fb });
   }
 }
