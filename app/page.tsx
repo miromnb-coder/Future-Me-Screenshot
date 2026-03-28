@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 
-type Role = "me" | "future me";
+type Role = "me" | "future-me";
 type Mood = "calm" | "honest" | "direct" | "wise";
 
 type Message = {
@@ -24,7 +24,7 @@ const MAX_MESSAGES = 50;
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
-  role: "future me",
+  role: "future-me",
   text: "Write one thought. I’ll keep the conversation going.",
   time: "now"
 };
@@ -329,18 +329,25 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
       letterSpacing: "-0.005em",
-      position: "relative"
+      position: "relative",
+      width: "fit-content"
     },
     meBubble: {
       background: "linear-gradient(180deg, #101826, #141f2f)",
       color: "#f5efe6",
       boxShadow: "0 12px 24px rgba(16,24,38,0.12)",
-      borderTopRightRadius: 26
+      borderTopRightRadius: 26,
+      borderTopLeftRadius: 26,
+      borderBottomLeftRadius: 26,
+      borderBottomRightRadius: 16
     },
     futureBubble: {
       background: "rgba(16,24,38,0.06)",
       color: "#101826",
-      borderTopLeftRadius: 26
+      borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
+      borderBottomLeftRadius: 16,
+      borderBottomRightRadius: 26
     },
     timestamp: {
       marginTop: 6,
@@ -381,6 +388,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     composerTextarea: {
       flex: 1,
+      width: "100%",
       minHeight: 58,
       maxHeight: 180,
       resize: "none",
@@ -564,8 +572,7 @@ export default function Page() {
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant =
-        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const lastAssistant = [...messages].reverse().find((m) => m.role === "future-me")?.text ?? "";
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
@@ -573,7 +580,7 @@ export default function Page() {
 
       const assistantMessage: Message = {
         id: uid(),
-        role: "future me",
+        role: "future-me",
         text: replyText,
         time: formatClock()
       };
@@ -582,7 +589,7 @@ export default function Page() {
     } catch {
       const assistantMessage: Message = {
         id: uid(),
-        role: "future me",
+        role: "future-me",
         text: fallbackReply(trimmed, mood),
         time: formatClock()
       };
@@ -968,6 +975,7 @@ export default function Page() {
           word-break: break-word;
           letter-spacing: -0.005em;
           position: relative;
+          width: fit-content;
         }
 
         .messageBubble.me {
@@ -975,12 +983,18 @@ export default function Page() {
           color: #f5efe6;
           box-shadow: 0 12px 24px rgba(16, 24, 38, 0.12);
           border-top-right-radius: 26px;
+          border-top-left-radius: 26px;
+          border-bottom-left-radius: 26px;
+          border-bottom-right-radius: 16px;
         }
 
         .messageBubble.future-me {
           background: rgba(16, 24, 38, 0.06);
           color: #101826;
           border-top-left-radius: 26px;
+          border-top-right-radius: 26px;
+          border-bottom-left-radius: 16px;
+          border-bottom-right-radius: 26px;
         }
 
         .timestamp {
@@ -1022,6 +1036,7 @@ export default function Page() {
           gap: 10px;
           align-items: flex-end;
           padding: 14px;
+          flex-direction: row;
         }
 
         .composerTextarea {
