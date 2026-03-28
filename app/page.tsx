@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 
 type Role = "me" | "future me";
+type Mood = "calm" | "honest" | "direct" | "wise";
 
 type Message = {
   id: string;
@@ -15,16 +16,24 @@ type Message = {
 type PersistedState = {
   messages: Message[];
   input: string;
+  mood: Mood;
 };
 
-const STORAGE_KEY = "future-me-ui-v3";
+const STORAGE_KEY = "future-me-ui-v4";
 const MAX_MESSAGES = 50;
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
   role: "future me",
-  text: "Write one thought. I will keep the conversation going.",
+  text: "Write one thought. I’ll keep the conversation going.",
   time: "now"
+};
+
+const moodLabels: Record<Mood, string> = {
+  calm: "Calm",
+  honest: "Honest",
+  direct: "Direct",
+  wise: "Wise"
 };
 
 function uid() {
@@ -46,35 +55,409 @@ function looksFinnish(text: string) {
   );
 }
 
-function fallbackReply(latestUserText: string, lastAssistantText = "") {
-  const seed = `${latestUserText}|${lastAssistantText}`;
+function fallbackReply(latestUserText: string, mood: Mood, lastAssistantText = "") {
+  const seed = `${latestUserText}|${lastAssistantText}|${mood}`;
   const isFinnish = looksFinnish(seed);
-  const variantsEn = [
-    "You are not asking for information. You are asking for permission.",
-    "The cost matters more than the option itself.",
-    "This feels bigger because you want certainty to arrive first.",
-    "You already have a direction. You are checking whether it is allowed.",
-    "The real question is what this changes, not whether it works."
-  ];
-  const variantsFi = [
-    "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
-    "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto.",
-    "Tämä tuntuu isommalta, koska toivot että varmuus tulisi ensin.",
-    "Suunta on sinulla jo. Tarkistat vain, onko se muka sallittu.",
-    "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa."
-  ];
 
-  const source = isFinnish ? variantsFi : variantsEn;
+  const sets: Record<Mood, { en: string[]; fi: string[] }> = {
+    calm: {
+      en: [
+        "Pause first. You do not need to solve it in one move.",
+        "The answer is usually quieter than the fear around it.",
+        "You are closer to clarity than it feels."
+      ],
+      fi: [
+        "Pysähdy ensin. Tätä ei tarvitse ratkaista yhdellä liikkeellä.",
+        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko.",
+        "Olet lähempänä selkeyttä kuin miltä tuntuu."
+      ]
+    },
+    honest: {
+      en: [
+        "You are not really asking for information. You are asking for permission.",
+        "The cost matters more than the option itself.",
+        "You already know the direction. You are checking whether it is allowed."
+      ],
+      fi: [
+        "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
+        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto.",
+        "Suunta on sinulla jo. Tarkistat vain, onko se muka sallittu."
+      ]
+    },
+    direct: {
+      en: [
+        "This is simpler than it feels. Decide, then move.",
+        "The hesitation is the real problem, not the choice.",
+        "You already have enough information."
+      ],
+      fi: [
+        "Tämä on yksinkertaisempi kuin miltä tuntuu. Päätä ja liiku.",
+        "Epäröinti on varsinainen ongelma, ei valinta.",
+        "Sinulla on jo riittävästi tietoa."
+      ]
+    },
+    wise: {
+      en: [
+        "The real question is what this changes, not whether it works.",
+        "You are trying to protect the future version of yourself from a consequence.",
+        "The hidden cost is usually the part worth paying attention to."
+      ],
+      fi: [
+        "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa.",
+        "Yrität suojella tulevaa itseäsi seuraukselta.",
+        "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota."
+      ]
+    }
+  };
+
+  const source = isFinnish ? sets[mood].fi : sets[mood].en;
   const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
   return source[Math.abs(score) % source.length];
 }
 
+function createStyles(mobile: boolean): Record<string, CSSProperties> {
+  return {
+    page: {
+      minHeight: "100vh",
+      padding: mobile ? 10 : 16,
+      background:
+        "radial-gradient(circle at top left, rgba(255,255,255,0.70), transparent 24%), radial-gradient(circle at top right, rgba(255,255,255,0.28), transparent 20%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
+      color: "#101826",
+      fontFamily:
+        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      overflowX: "hidden"
+    },
+    shell: {
+      maxWidth: 860,
+      margin: "0 auto",
+      display: "grid",
+      gap: 12,
+      paddingBottom: 8
+    },
+    topBar: {
+      position: "sticky",
+      top: 0,
+      zIndex: 20,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      padding: "8px 2px 12px",
+      backdropFilter: "blur(16px)",
+      background: "linear-gradient(180deg, rgba(244,239,231,0.96), rgba(244,239,231,0.80))"
+    },
+    topTitle: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: 2,
+      textAlign: "center",
+      flex: 1
+    },
+    brand: {
+      fontSize: 18,
+      fontWeight: 800,
+      letterSpacing: "-0.035em"
+    },
+    brandSub: {
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)"
+    },
+    iconButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      border: "1px solid rgba(16,24,38,0.08)",
+      background: "rgba(255,255,255,0.78)",
+      color: "#101826",
+      display: "grid",
+      placeItems: "center",
+      cursor: "pointer",
+      boxShadow: "0 12px 26px rgba(16,24,38,0.05)"
+    },
+    statusRow: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 8,
+      alignItems: "center"
+    },
+    pill: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "8px 12px",
+      borderRadius: 999,
+      border: "1px solid rgba(16,24,38,0.06)",
+      background: "rgba(255,255,255,0.52)",
+      color: "rgba(16,24,38,0.72)",
+      fontSize: 12,
+      letterSpacing: "0.01em",
+      backdropFilter: "blur(12px)"
+    },
+    pillAction: {
+      border: "1px solid rgba(16,24,38,0.06)",
+      background: "rgba(255,255,255,0.66)",
+      color: "#101826",
+      padding: "8px 12px",
+      borderRadius: 999,
+      fontSize: 12,
+      fontWeight: 600
+    },
+    moodRow: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap"
+    },
+    moodButton: {
+      border: "1px solid rgba(16,24,38,0.08)",
+      background: "rgba(255,255,255,0.68)",
+      color: "#101826",
+      padding: "9px 13px",
+      borderRadius: 999,
+      fontSize: 12,
+      fontWeight: 600
+    },
+    moodButtonActive: {
+      border: "1px solid rgba(16,24,38,0.10)",
+      background: "#101826",
+      color: "#f5efe6",
+      padding: "9px 13px",
+      borderRadius: 999,
+      fontSize: 12,
+      fontWeight: 700
+    },
+    threadCard: {
+      borderRadius: 30,
+      background: "rgba(255,255,255,0.62)",
+      border: "1px solid rgba(16,24,38,0.07)",
+      boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
+      overflow: "hidden",
+      backdropFilter: "blur(18px)"
+    },
+    threadHeader: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      padding: 16,
+      borderBottom: "1px solid rgba(16,24,38,0.06)",
+      background: "rgba(255,255,255,0.34)",
+      backdropFilter: "blur(10px)"
+    },
+    threadLeft: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12
+    },
+    avatar: {
+      width: 38,
+      height: 38,
+      borderRadius: 999,
+      background: "linear-gradient(135deg, #101826, #1f2b3d)",
+      color: "#f5efe6",
+      display: "grid",
+      placeItems: "center",
+      fontSize: 14,
+      fontWeight: 800,
+      boxShadow: "0 10px 18px rgba(16,24,38,0.14)"
+    },
+    threadText: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 2
+    },
+    threadName: {
+      fontSize: 16,
+      fontWeight: 800,
+      letterSpacing: "-0.03em"
+    },
+    threadMeta: {
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)"
+    },
+    liveChip: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "8px 12px",
+      borderRadius: 999,
+      background: "rgba(16,24,38,0.05)",
+      border: "1px solid rgba(16,24,38,0.06)",
+      fontSize: 12,
+      color: "rgba(16,24,38,0.7)"
+    },
+    liveDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 999,
+      background: "#4caf7a",
+      boxShadow: "0 0 0 5px rgba(76,175,122,0.16)"
+    },
+    threadBody: {
+      padding: 16,
+      minHeight: mobile ? 520 : 640,
+      display: "flex",
+      flexDirection: "column",
+      gap: 10
+    },
+    stream: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      flex: 1
+    },
+    messageRow: {
+      display: "flex",
+      animation: "floatIn 220ms ease both"
+    },
+    messageBubble: {
+      maxWidth: mobile ? "86%" : "72%",
+      padding: "14px 16px",
+      borderRadius: 26,
+      fontSize: 14,
+      lineHeight: 1.6,
+      whiteSpace: "pre-wrap",
+      wordBreak: "break-word",
+      letterSpacing: "-0.005em",
+      position: "relative"
+    },
+    meBubble: {
+      background: "linear-gradient(180deg, #101826, #141f2f)",
+      color: "#f5efe6",
+      boxShadow: "0 12px 24px rgba(16,24,38,0.12)",
+      borderTopRightRadius: 26
+    },
+    futureBubble: {
+      background: "rgba(16,24,38,0.06)",
+      color: "#101826",
+      borderTopLeftRadius: 26
+    },
+    timestamp: {
+      marginTop: 6,
+      fontSize: 11,
+      color: "rgba(16,24,38,0.52)"
+    },
+    typingRow: {
+      display: "flex",
+      justifyContent: "flex-start",
+      animation: "floatIn 180ms ease both"
+    },
+    typingBubble: {
+      padding: "12px 14px",
+      borderRadius: 26,
+      background: "rgba(16,24,38,0.05)",
+      color: "rgba(16,24,38,0.58)",
+      fontSize: 14,
+      letterSpacing: "0.02em",
+      animation: "pulse 1.3s ease-in-out infinite"
+    },
+    composerShell: {
+      position: "sticky",
+      bottom: 14,
+      zIndex: 10,
+      borderRadius: 28,
+      background: "rgba(255,255,255,0.72)",
+      border: "1px solid rgba(16,24,38,0.07)",
+      boxShadow: "0 20px 54px rgba(16,24,38,0.08)",
+      backdropFilter: "blur(18px)",
+      overflow: "hidden"
+    },
+    composerRow: {
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-end",
+      padding: 14,
+      flexDirection: mobile ? "column" : "row"
+    },
+    composerTextarea: {
+      flex: 1,
+      width: "100%",
+      minHeight: 58,
+      maxHeight: 180,
+      resize: "none",
+      borderRadius: 26,
+      border: "1px solid rgba(16,24,38,0.08)",
+      background: "rgba(255,255,255,0.88)",
+      color: "#101826",
+      padding: "15px 14px",
+      lineHeight: 1.55,
+      fontSize: 15,
+      outline: "none",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
+      transition: "border-color 160ms ease, box-shadow 160ms ease"
+    },
+    sendButton: {
+      minWidth: mobile ? "100%" : 104,
+      border: 0,
+      borderRadius: 26,
+      padding: "14px 16px",
+      background: "linear-gradient(180deg, #101826, #1b2636)",
+      color: "#f5efe6",
+      fontWeight: 700,
+      boxShadow: "0 12px 22px rgba(16,24,38,0.16)"
+    },
+    helper: {
+      padding: "0 16px 16px",
+      fontSize: 12,
+      color: "rgba(16,24,38,0.54)",
+      lineHeight: 1.5
+    },
+    sheetBackdrop: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(15,23,38,0.24)",
+      backdropFilter: "blur(4px)",
+      zIndex: 40
+    },
+    sheet: {
+      position: "fixed",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 50,
+      background: "rgba(255,255,255,0.96)",
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderTop: "1px solid rgba(16,24,38,0.08)",
+      padding: 16,
+      boxShadow: "0 -18px 50px rgba(16,24,38,0.16)",
+      display: "grid",
+      gap: 12
+    },
+    sheetTitle: {
+      fontSize: 18,
+      fontWeight: 800,
+      letterSpacing: "-0.03em"
+    },
+    sheetSub: {
+      marginTop: 3,
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)"
+    },
+    sheetGroup: {
+      display: "grid",
+      gap: 8
+    },
+    sheetButton: {
+      width: "100%",
+      textAlign: "left",
+      borderRadius: 16,
+      padding: "12px 14px",
+      border: "1px solid rgba(16,24,38,0.08)",
+      background: "rgba(255,255,255,0.88)",
+      color: "#101826",
+      fontWeight: 600
+    }
+  };
+}
+
 export default function Page() {
+  const [mobile, setMobile] = useState(false);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
+  const [mood, setMood] = useState<Mood>("honest");
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [proOpen, setProOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
@@ -82,12 +465,8 @@ export default function Page() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const upgradeUrl = process.env.NEXT_PUBLIC_PRO_UPGRADE_URL || "";
-
   useEffect(() => {
-    const update = () => {
-      document.documentElement.dataset.mobile = window.innerWidth < 900 ? "true" : "false";
-    };
+    const update = () => setMobile(window.innerWidth < 900);
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -108,6 +487,12 @@ export default function Page() {
         if (typeof parsed.input === "string") {
           setInput(parsed.input);
         }
+        if (
+          parsed.mood &&
+          ["calm", "honest", "direct", "wise"].includes(parsed.mood)
+        ) {
+          setMood(parsed.mood as Mood);
+        }
       }
     } catch {
       // ignore broken storage
@@ -122,10 +507,11 @@ export default function Page() {
       STORAGE_KEY,
       JSON.stringify({
         messages: messages.slice(-MAX_MESSAGES),
-        input
-      })
+        input,
+        mood
+      } satisfies PersistedState)
     );
-  }, [messages, input, hydrated]);
+  }, [messages, input, mood, hydrated]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -138,11 +524,13 @@ export default function Page() {
   }, [input]);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen || proOpen ? "hidden" : "";
+    document.body.style.overflow = menuOpen ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [menuOpen, proOpen]);
+  }, [menuOpen]);
+
+  const styles = useMemo(() => createStyles(mobile), [mobile]);
 
   async function sendMessage() {
     if (loading) return;
@@ -166,14 +554,15 @@ export default function Page() {
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages })
+        body: JSON.stringify({ messages: nextMessages, mood })
       });
 
       const data = await response.json().catch(() => ({}));
+      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
-          : fallbackReply(trimmed, [...messages].reverse().find((m) => m.role === "future me")?.text ?? "");
+          : fallbackReply(trimmed, mood, lastAssistant);
 
       const assistantMessage: Message = {
         id: uid(),
@@ -187,7 +576,7 @@ export default function Page() {
       const assistantMessage: Message = {
         id: uid(),
         role: "future me",
-        text: fallbackReply(trimmed),
+        text: fallbackReply(trimmed, mood),
         time: formatClock()
       };
 
@@ -202,9 +591,9 @@ export default function Page() {
     window.localStorage.removeItem(STORAGE_KEY);
     setMessages([WELCOME_MESSAGE]);
     setInput("");
+    setMood("honest");
     setLoading(false);
     setMenuOpen(false);
-    setProOpen(false);
     setFocusMode(false);
     textareaRef.current?.focus();
   }
@@ -240,11 +629,6 @@ export default function Page() {
     link.click();
   }
 
-  const openPro = () => {
-    setProOpen(true);
-    setMenuOpen(false);
-  };
-
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -252,18 +636,8 @@ export default function Page() {
     }
   };
 
-  const goPro = () => {
-    if (upgradeUrl) {
-      window.open(upgradeUrl, "_blank", "noopener,noreferrer");
-    }
-  };
-
   return (
     <main className={`fmApp ${focusMode ? "focusMode" : ""}`}>
-      <div className="scene sceneOne" />
-      <div className="scene sceneTwo" />
-      <div className="scene sceneThree" />
-
       <style jsx global>{`
         :root {
           color-scheme: light;
@@ -278,8 +652,8 @@ export default function Page() {
           margin: 0;
           min-height: 100%;
           background:
-            radial-gradient(circle at top left, rgba(255, 255, 255, 0.68), transparent 24%),
-            radial-gradient(circle at top right, rgba(255, 255, 255, 0.32), transparent 20%),
+            radial-gradient(circle at top left, rgba(255, 255, 255, 0.70), transparent 24%),
+            radial-gradient(circle at top right, rgba(255, 255, 255, 0.28), transparent 20%),
             linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
           color: #101826;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -319,7 +693,6 @@ export default function Page() {
 
         .scene {
           position: fixed;
-          inset: auto;
           pointer-events: none;
           z-index: 0;
           filter: blur(60px);
@@ -356,7 +729,7 @@ export default function Page() {
           max-width: 860px;
           margin: 0 auto;
           display: grid;
-          gap: 14px;
+          gap: 12px;
           padding-bottom: 18px;
         }
 
@@ -378,7 +751,7 @@ export default function Page() {
           height: 42px;
           border-radius: 14px;
           border: 1px solid rgba(16, 24, 38, 0.08);
-          background: rgba(255, 255, 255, 0.72);
+          background: rgba(255, 255, 255, 0.78);
           color: #101826;
           display: grid;
           place-items: center;
@@ -422,7 +795,6 @@ export default function Page() {
           flex-wrap: wrap;
           gap: 8px;
           align-items: center;
-          margin-top: 2px;
         }
 
         .pill {
@@ -449,6 +821,32 @@ export default function Page() {
           font-weight: 600;
         }
 
+        .moodRow {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .moodButton {
+          border: 1px solid rgba(16, 24, 38, 0.08);
+          background: rgba(255, 255, 255, 0.68);
+          color: #101826;
+          padding: 9px 13px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .moodButtonActive {
+          border: 1px solid rgba(16, 24, 38, 0.10);
+          background: #101826;
+          color: #f5efe6;
+          padding: 9px 13px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
         .threadCard {
           border-radius: 30px;
           background: rgba(255, 255, 255, 0.62);
@@ -463,7 +861,7 @@ export default function Page() {
           align-items: center;
           justify-content: space-between;
           gap: 12px;
-          padding: 16px 16px 14px;
+          padding: 16px;
           border-bottom: 1px solid rgba(16, 24, 38, 0.06);
           background: rgba(255, 255, 255, 0.34);
           backdrop-filter: blur(10px);
@@ -549,16 +947,12 @@ export default function Page() {
           justify-content: flex-end;
         }
 
-        .messageRow.future\ me {
-          justify-content: flex-start;
-        }
-
         .messageBubble {
           max-width: min(82%, 560px);
-          padding: 13px 15px;
-          border-radius: 18px;
+          padding: 14px 16px;
+          border-radius: 26px;
           font-size: 14px;
-          line-height: 1.55;
+          line-height: 1.6;
           white-space: pre-wrap;
           word-break: break-word;
           letter-spacing: -0.005em;
@@ -568,14 +962,14 @@ export default function Page() {
         .messageBubble.me {
           background: linear-gradient(180deg, #101826, #141f2f);
           color: #f5efe6;
-          border-top-right-radius: 8px;
           box-shadow: 0 12px 24px rgba(16, 24, 38, 0.12);
+          border-top-right-radius: 26px;
         }
 
-        .messageBubble.future\ me {
+        .messageBubble.future\\ me {
           background: rgba(16, 24, 38, 0.06);
           color: #101826;
-          border-top-left-radius: 8px;
+          border-top-left-radius: 26px;
         }
 
         .timestamp {
@@ -592,8 +986,7 @@ export default function Page() {
 
         .typingBubble {
           padding: 12px 14px;
-          border-radius: 18px;
-          border-top-left-radius: 8px;
+          border-radius: 26px;
           background: rgba(16, 24, 38, 0.05);
           color: rgba(16, 24, 38, 0.58);
           font-size: 14px;
@@ -625,7 +1018,7 @@ export default function Page() {
           min-height: 58px;
           max-height: 180px;
           resize: none;
-          border-radius: 20px;
+          border-radius: 26px;
           border: 1px solid rgba(16, 24, 38, 0.08);
           background: rgba(255, 255, 255, 0.88);
           color: #101826;
@@ -636,8 +1029,7 @@ export default function Page() {
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
           transition:
             border-color 160ms ease,
-            box-shadow 160ms ease,
-            transform 160ms ease;
+            box-shadow 160ms ease;
         }
 
         .composerTextarea:focus {
@@ -650,27 +1042,12 @@ export default function Page() {
         .sendButton {
           min-width: 104px;
           border: 0;
-          border-radius: 18px;
+          border-radius: 26px;
           padding: 14px 16px;
           background: linear-gradient(180deg, #101826, #1b2636);
           color: #f5efe6;
           font-weight: 700;
           box-shadow: 0 12px 22px rgba(16, 24, 38, 0.16);
-          transition:
-            transform 160ms ease,
-            box-shadow 160ms ease,
-            opacity 160ms ease;
-        }
-
-        .sendButton:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 16px 26px rgba(16, 24, 38, 0.18);
-        }
-
-        .sendButton:disabled {
-          opacity: 0.72;
-          cursor: not-allowed;
-          transform: none;
         }
 
         .helper {
@@ -732,56 +1109,8 @@ export default function Page() {
           font-weight: 600;
         }
 
-        .proCard {
-          border-radius: 22px;
-          padding: 16px;
-          background: linear-gradient(180deg, rgba(16, 24, 38, 0.96), rgba(27, 37, 54, 0.96));
-          color: #f5efe6;
-          display: grid;
-          gap: 10px;
-        }
-
-        .proCardTitle {
-          font-size: 18px;
-          font-weight: 800;
-        }
-
-        .proCardText {
-          color: rgba(245, 239, 230, 0.74);
-          line-height: 1.55;
-          font-size: 14px;
-        }
-
-        .proActions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .proButton {
-          border: 0;
-          border-radius: 16px;
-          padding: 12px 16px;
-          background: #f5efe6;
-          color: #101826;
-          font-weight: 800;
-        }
-
-        .proGhost {
-          border: 1px solid rgba(245, 239, 230, 0.16);
-          border-radius: 16px;
-          padding: 12px 16px;
-          background: transparent;
-          color: #f5efe6;
-          font-weight: 700;
-        }
-
         .focusMode .brandSub {
           opacity: 0.3;
-        }
-
-        .focusMode .statusRow {
-          opacity: 0.5;
         }
 
         .focusMode .threadCard {
@@ -847,7 +1176,6 @@ export default function Page() {
       `}</style>
 
       {menuOpen && <div className="sheetBackdrop" onClick={() => setMenuOpen(false)} />}
-      {proOpen && <div className="sheetBackdrop" onClick={() => setProOpen(false)} />}
 
       {menuOpen && (
         <aside className="sheet">
@@ -872,36 +1200,9 @@ export default function Page() {
             <button className="sheetButton" onClick={() => setFocusMode((v) => !v)}>
               {focusMode ? "Exit focus mode" : "Focus mode"}
             </button>
-            <button className="sheetButton" onClick={openPro}>
-              Upgrade to Pro
-            </button>
             <button className="sheetButton" onClick={() => setMenuOpen(false)}>
               Close
             </button>
-          </div>
-        </aside>
-      )}
-
-      {proOpen && (
-        <aside className="sheet">
-          <div>
-            <div className="sheetTitle">Go Pro</div>
-            <div className="sheetSub">Unlock more generations and cleaner exports</div>
-          </div>
-
-          <div className="proCard">
-            <div className="proCardTitle">Pro features</div>
-            <div className="proCardText">
-              More generations, saved history, and a smoother export flow.
-            </div>
-            <div className="proActions">
-              <button className="proButton" onClick={goPro} disabled={!upgradeUrl}>
-                {upgradeUrl ? "Upgrade now" : "Add upgrade link"}
-              </button>
-              <button className="proGhost" onClick={() => setProOpen(false)}>
-                Not now
-              </button>
-            </div>
           </div>
         </aside>
       )}
@@ -917,7 +1218,7 @@ export default function Page() {
             <div className="brandSub">free-form chat · persistent context</div>
           </div>
 
-          <button className="actionButton" aria-label="Upgrade" onClick={openPro}>
+          <button className="actionButton" aria-label="Menu" onClick={() => setMenuOpen(true)}>
             ⋯
           </button>
         </header>
@@ -931,6 +1232,19 @@ export default function Page() {
           <button className="pillAction" type="button" onClick={() => setFocusMode((v) => !v)}>
             {focusMode ? "Exit focus mode" : "Focus mode"}
           </button>
+        </div>
+
+        <div className="moodRow">
+          {(Object.keys(moodLabels) as Mood[]).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setMood(item)}
+              className={item === mood ? "moodButtonActive" : "moodButton"}
+            >
+              {moodLabels[item]}
+            </button>
+          ))}
         </div>
 
         <section ref={previewRef} className="threadCard">
@@ -954,9 +1268,9 @@ export default function Page() {
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`messageRow ${message.role === "me" ? "me" : "future me"}`}
+                  className={`messageRow ${message.role === "me" ? "me" : ""}`}
                 >
-                  <div className={`messageBubble ${message.role === "me" ? "me" : "future me"}`}>
+                  <div className={`messageBubble ${message.role === "me" ? "me" : ""}`}>
                     {message.text}
                     <div className="timestamp">{message.time}</div>
                   </div>
@@ -986,7 +1300,7 @@ export default function Page() {
               rows={1}
             />
 
-            <button className="sendButton" onClick={sendMessage} disabled={loading}>
+            <button className="sendButton" onClick={() => void sendMessage()} disabled={loading}>
               {loading ? "Sending..." : "Send"}
             </button>
           </div>
