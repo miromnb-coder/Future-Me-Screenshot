@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 type ChatRole = "me" | "future me";
+type Mood = "calm" | "honest" | "direct" | "wise";
 
 type ChatMessage = {
   role: ChatRole;
@@ -16,27 +17,64 @@ function looksFinnish(text: string) {
   );
 }
 
-function pickFallback(latestUserText: string, lastAssistantText: string) {
-  const variantsEn = [
-    "You are not asking for information. You are asking for permission.",
-    "The part you are avoiding is probably the cost, not the choice.",
-    "This feels bigger because you want the answer to remove uncertainty.",
-    "You already have a direction. You are checking whether it is allowed.",
-    "The real question is what this changes, not whether it is possible."
-  ];
+function pickFallback(latestUserText: string, lastAssistantText: string, mood: Mood) {
+  const seed = `${latestUserText}|${lastAssistantText}|${mood}`;
+  const isFinnish = looksFinnish(seed);
 
-  const variantsFi = [
-    "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
-    "Vältät ehkä itse päätöksen hintaa, et itse asiaa.",
-    "Tämä tuntuu isommalta, koska haluaisit että vastaus poistaa epävarmuuden.",
-    "Suunta on sinulla jo. Tarkistat vain, onko se muka sallittu.",
-    "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa."
-  ];
+  const variants = {
+    calm: {
+      en: [
+        "Pause first. You do not need to solve it in one move.",
+        "The answer is usually quieter than the fear around it.",
+        "You are closer to clarity than it feels."
+      ],
+      fi: [
+        "Pysähdy ensin. Tätä ei tarvitse ratkaista yhdellä liikkeellä.",
+        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko.",
+        "Olet lähempänä selkeyttä kuin miltä tuntuu."
+      ]
+    },
+    honest: {
+      en: [
+        "You are not really asking for information. You are asking for permission.",
+        "The cost matters more than the option itself.",
+        "You already know the direction. You are checking whether it is allowed."
+      ],
+      fi: [
+        "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
+        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto.",
+        "Suunta on sinulla jo. Tarkistat vain, onko se muka sallittu."
+      ]
+    },
+    direct: {
+      en: [
+        "This is simpler than it feels. Decide, then move.",
+        "The hesitation is the real problem, not the choice.",
+        "You already have enough information."
+      ],
+      fi: [
+        "Tämä on yksinkertaisempi kuin miltä tuntuu. Päätä ja liiku.",
+        "Epäröinti on varsinainen ongelma, ei valinta.",
+        "Sinulla on jo riittävästi tietoa."
+      ]
+    },
+    wise: {
+      en: [
+        "The real question is what this changes, not whether it works.",
+        "You are trying to protect the future version of yourself from a consequence.",
+        "The hidden cost is usually the part worth paying attention to."
+      ],
+      fi: [
+        "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa.",
+        "Yrität suojella tulevaa itseäsi seuraukselta.",
+        "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota."
+      ]
+    }
+  };
 
-  const source = looksFinnish(`${latestUserText} ${lastAssistantText}`) ? variantsFi : variantsEn;
-  const seed = `${latestUserText}|${lastAssistantText}`;
-  const index = Math.abs([...seed].reduce((a, c) => a + c.charCodeAt(0), 0)) % source.length;
-  return source[index];
+  const source = isFinnish ? variants[mood].fi : variants[mood].en;
+  const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return source[Math.abs(score) % source.length];
 }
 
 function extractReply(raw: string) {
@@ -44,9 +82,7 @@ function extractReply(raw: string) {
 
   try {
     const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed.reply === "string") {
-      return parsed.reply.trim();
-    }
+    if (parsed && typeof parsed.reply === "string") return parsed.reply.trim();
   } catch {
     // ignore
   }
@@ -57,9 +93,7 @@ function extractReply(raw: string) {
   if (start >= 0 && end > start) {
     try {
       const parsed = JSON.parse(trimmed.slice(start, end + 1));
-      if (parsed && typeof parsed.reply === "string") {
-        return parsed.reply.trim();
-      }
+      if (parsed && typeof parsed.reply === "string") return parsed.reply.trim();
     } catch {
       // ignore
     }
@@ -81,7 +115,9 @@ function formatConversation(messages: ChatMessage[]) {
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
 
+  const mood = String(body.mood ?? "honest").trim().toLowerCase() as Mood;
   const incoming = Array.isArray(body.messages) ? body.messages : [];
+
   const history: ChatMessage[] = incoming
     .filter(
       (message: unknown): message is ChatMessage =>
@@ -89,7 +125,8 @@ export async function POST(request: Request) {
           message &&
             typeof message === "object" &&
             (message as ChatMessage).role &&
-            ((message as ChatMessage).role === "me" || (message as ChatMessage).role === "future me") &&
+            ((message as ChatMessage).role === "me" ||
+              (message as ChatMessage).role === "future me") &&
             typeof (message as ChatMessage).text === "string"
         )
     )
@@ -110,32 +147,36 @@ export async function POST(request: Request) {
 
   if (!apiKey) {
     return NextResponse.json({
-      reply: pickFallback(latestUserText, lastAssistantMessage)
+      reply: pickFallback(latestUserMessage, lastAssistantMessage, mood)
     });
   }
 
   const systemPrompt = `
 You are the user's future self continuing an ongoing private chat.
 
-You must continue the conversation naturally.
-Do not repeat the same sentence pattern each time.
-Do not give the same generic answer to every prompt.
+Mood: ${mood}
+
+Reply to the latest user message using the full conversation for context.
+Mirror the user's language naturally. If the latest user message is Finnish, answer in Finnish.
+If it is English, answer in English.
+
+Mood guidance:
+- calm: steady, reflective, soft
+- honest: direct, truthful, grounded
+- direct: brief, sharp, clear
+- wise: thoughtful, slightly unsettling, precise
 
 Rules:
-- Reply in the same language as the latest user message.
 - Keep it short: 1 to 3 sentences max.
 - Be specific, human, and context-aware.
 - Use the conversation history to avoid repeating yourself.
-- If the latest assistant reply already said one angle, choose a different angle.
-- Sometimes answer directly, sometimes reframe the issue, sometimes point out the hidden cost.
+- If the last assistant reply already said one angle, choose a different angle.
 - Do not sound like a therapist or an assistant.
 - No markdown.
-- No bullet points.
+- No bullets.
 - No labels.
 - No clichés like "trust the process" or "follow your heart".
 - No long explanations.
-
-Your reply should feel like a real person continuing a real chat.
 
 Return exactly one JSON object:
 {"reply":"..."}
@@ -178,19 +219,19 @@ Keep it fresh. Do not reuse the same idea or wording from the last reply.
       const text = await response.text().catch(() => "");
       console.error("Groq error:", response.status, text);
       return NextResponse.json({
-        reply: pickFallback(latestUserMessage, lastAssistantMessage)
+        reply: pickFallback(latestUserMessage, lastAssistantMessage, mood)
       });
     }
 
     const data = await response.json();
     const raw = data?.choices?.[0]?.message?.content ?? "";
-    const reply = extractReply(raw) || pickFallback(latestUserMessage, lastAssistantMessage);
+    const reply = extractReply(raw) || pickFallback(latestUserMessage, lastAssistantMessage, mood);
 
     return NextResponse.json({ reply });
   } catch (error) {
     console.error("Generate route error:", error);
     return NextResponse.json({
-      reply: pickFallback(latestUserMessage, lastAssistantMessage)
+      reply: pickFallback(latestUserMessage, lastAssistantMessage, mood)
     });
   }
 }
