@@ -30,45 +30,12 @@ const toneLabels: Record<Tone, string> = {
   chaotic: "Chaotic"
 };
 
-function buildMessages(decision: string, tone: Tone, horizon: string): Message[] {
-  const d = decision.trim() || "Should I do this?";
-  const h = horizon.trim() || "2 weeks";
-
-  const replies: Record<Tone, Message[]> = {
-    calm: [
-      { from: "me", text: d, time: "now" },
-      { from: "future me", text: "Take a second before deciding.", time: "soon" },
-      { from: "me", text: "So… maybe not?", time: "soon" },
-      { from: "future me", text: `Probably not. ${h} later, you'll appreciate the pause.`, time: h }
-    ],
-    honest: [
-      { from: "me", text: d, time: "now" },
-      { from: "future me", text: "Be honest with yourself.", time: "soon" },
-      { from: "me", text: "I am.", time: "soon" },
-      { from: "future me", text: `Then you already know the answer. ${h} later, you'll still think about this.`, time: h }
-    ],
-    direct: [
-      { from: "me", text: d, time: "now" },
-      { from: "future me", text: "No. That's the answer.", time: "soon" },
-      { from: "me", text: "That simple?", time: "soon" },
-      { from: "future me", text: `Yes. ${h} later, you'll see why.`, time: h }
-    ],
-    hopeful: [
-      { from: "me", text: d, time: "now" },
-      { from: "future me", text: "Maybe. But move carefully.", time: "soon" },
-      { from: "me", text: "So not a hard no?", time: "soon" },
-      { from: "future me", text: `Not a hard no. Just a reminder to choose with clarity. ${h} later, that matters.`, time: h }
-    ],
-    chaotic: [
-      { from: "me", text: d, time: "now" },
-      { from: "future me", text: "This is already getting interesting.", time: "soon" },
-      { from: "me", text: "Should I do it?", time: "soon" },
-      { from: "future me", text: `Maybe. ${h} later, this will either be a lesson or a story.`, time: h }
-    ]
-  };
-
-  return replies[tone];
-}
+const fallbackMessages = (decision: string, horizon: string): Message[] => [
+  { from: "me", text: decision || "Should I do this?", time: "now" },
+  { from: "future me", text: "Pause first. Clarity usually arrives before regret.", time: "soon" },
+  { from: "me", text: "So what now?", time: "soon" },
+  { from: "future me", text: `Give it ${horizon || "2 weeks"}.`, time: horizon || "2 weeks" }
+];
 
 function captionFor(tone: Tone) {
   switch (tone) {
@@ -345,15 +312,6 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       marginTop: 6,
       fontSize: 11,
       color: "rgba(24,32,43,0.5)"
-    },
-    footerButtons: {
-      display: "grid",
-      gap: 10
-    },
-    footerHint: {
-      marginTop: 8,
-      fontSize: 12,
-      color: "rgba(24,32,43,0.56)"
     }
   };
 }
@@ -364,10 +322,11 @@ export default function Page() {
   const [horizon, setHorizon] = useState("2 weeks");
   const [preset, setPreset] = useState(presets[1]);
   const [messages, setMessages] = useState<Message[]>(
-    buildMessages("Should I buy this?", "honest", "2 weeks")
+    fallbackMessages("Should I buy this?", "2 weeks")
   );
   const [copied, setCopied] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const previewRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -380,24 +339,47 @@ export default function Page() {
   const styles = useMemo(() => createStyles(isMobile), [isMobile]);
   const caption = useMemo(() => captionFor(tone), [tone]);
 
-  const regenerate = (nextDecision = decision, nextTone = tone, nextHorizon = horizon) => {
-    setMessages(buildMessages(nextDecision, nextTone, nextHorizon));
+  const sendToAI = async (nextDecision = decision, nextTone = tone, nextHorizon = horizon) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          decision: nextDecision,
+          tone: nextTone,
+          horizon: nextHorizon
+        })
+      });
+
+      const data = await res.json();
+
+      if (Array.isArray(data?.messages) && data.messages.length > 0) {
+        setMessages(data.messages);
+      } else {
+        setMessages(fallbackMessages(nextDecision, nextHorizon));
+      }
+    } catch (err) {
+      console.error(err);
+      setMessages(fallbackMessages(nextDecision, nextHorizon));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handlePresetChange = (value: string) => {
     setPreset(value);
     setDecision(value);
-    regenerate(value, tone, horizon);
   };
 
   const handleToneChange = (value: Tone) => {
     setTone(value);
-    regenerate(decision, value, horizon);
   };
 
   const handleHorizonChange = (value: string) => {
     setHorizon(value);
-    regenerate(decision, tone, value);
   };
 
   const copyCaption = async () => {
@@ -498,10 +480,7 @@ export default function Page() {
             <div style={styles.menuLabel}>Decision</div>
             <textarea
               value={decision}
-              onChange={(e) => {
-                setDecision(e.target.value);
-                regenerate(e.target.value, tone, horizon);
-              }}
+              onChange={(e) => setDecision(e.target.value)}
               placeholder="Write one decision..."
               style={styles.textarea}
             />
@@ -509,9 +488,9 @@ export default function Page() {
 
           <div style={styles.menuSection}>
             <div style={styles.menuLabel}>Actions</div>
-            <div style={styles.footerButtons}>
-              <button onClick={() => regenerate()} style={styles.menuButton}>
-                Refresh conversation
+            <div style={styles.actionMenu}>
+              <button onClick={() => sendToAI()} style={styles.menuButton} disabled={isLoading}>
+                {isLoading ? "Sending..." : "Send message"}
               </button>
               <button onClick={downloadOrShareScreenshot} style={styles.menuButton}>
                 Save or share screenshot
@@ -520,8 +499,10 @@ export default function Page() {
                 {copied ? "Caption copied" : "Copy caption"}
               </button>
             </div>
-            <div style={styles.footerHint}>
-              Puhelimella “Save or share screenshot” avaa myös jakamisen, jos laite tukee sitä.
+            <div style={styles.captionText as CSSProperties}>
+              {isMobile
+                ? "Puhelimella voit lähettää viestin yhdellä napilla."
+                : "Tässä versiossa AI vastaus lähtee vasta kun painat Send message."}
             </div>
           </div>
 
@@ -554,7 +535,7 @@ export default function Page() {
                 <div style={styles.chatTitle}>Future Me</div>
                 <div style={styles.chatMeta}>private conversation · minimal mode</div>
               </div>
-              <div style={styles.chatPill}>quiet</div>
+              <div style={styles.chatPill}>{isLoading ? "typing..." : "quiet"}</div>
             </div>
 
             <div style={styles.divider}>
