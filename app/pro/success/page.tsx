@@ -1,45 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
-export default function ProSuccessPage() {
-  const router = useRouter();
+function SuccessContent() {
   const params = useSearchParams();
-  const [status, setStatus] = useState("Verifying payment…");
+  const router = useRouter();
 
   useEffect(() => {
-    const sessionId = params.get("session_id");
+    const session_id = params.get("session_id");
 
-    if (!sessionId) {
-      setStatus("Missing session id.");
-      return;
-    }
+    if (!session_id) return;
 
-    (async () => {
-      const res = await fetch("/api/verify-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId })
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok && data?.ok) {
-        setStatus("Pro unlocked.");
-        setTimeout(() => router.replace("/"), 900);
-      } else {
-        setStatus("Payment could not be verified.");
-      }
-    })();
+    fetch("/api/verify-session", {
+      method: "POST",
+      body: JSON.stringify({ session_id }),
+      headers: { "Content-Type": "application/json" }
+    }).then(() => {
+      router.replace("/");
+    });
   }, [params, router]);
 
+  return <div style={{ padding: 40 }}>Unlocking Pro...</div>;
+}
+
+export default function Page() {
   return (
-    <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
-      <div style={{ maxWidth: 420, textAlign: "center" }}>
-        <h1 style={{ fontSize: 28, marginBottom: 12 }}>Future Me Pro</h1>
-        <p style={{ opacity: 0.7, lineHeight: 1.6 }}>{status}</p>
-      </div>
-    </main>
+    <Suspense fallback={<div style={{ padding: 40 }}>Loading...</div>}>
+      <SuccessContent />
+    </Suspense>
   );
 }
