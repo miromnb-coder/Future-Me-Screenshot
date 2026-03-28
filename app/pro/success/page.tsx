@@ -1,15 +1,10 @@
-export const dynamic = "force-dynamic";
-
 "use client";
 
-import { Suspense, useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
 
-function SuccessContent() {
-  const params = useSearchParams();
-  const router = useRouter();
-
+export default function Page() {
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     const session_id = params.get("session_id");
 
     if (!session_id) return;
@@ -19,17 +14,13 @@ function SuccessContent() {
       body: JSON.stringify({ session_id }),
       headers: { "Content-Type": "application/json" }
     }).then(() => {
-      router.replace("/");
+      window.location.href = "/";
     });
-  }, [params, router]);
+  }, []);
 
-  return <div style={{ padding: 40 }}>Unlocking Pro...</div>;
-}
-
-export default function Page() {
   return (
-    <Suspense fallback={<div style={{ padding: 40 }}>Loading...</div>}>
-      <SuccessContent />
-    </Suspense>
+    <div style={{ padding: 40 }}>
+      Unlocking Pro...
+    </div>
   );
 }
