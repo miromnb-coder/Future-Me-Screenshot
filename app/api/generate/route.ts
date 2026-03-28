@@ -1,58 +1,84 @@
 import { NextResponse } from "next/server";
+import Groq from "groq-sdk";
 
-type Tone = "regret" | "win" | "savage" | "wholesome";
+type Tone = "calm" | "honest" | "direct" | "hopeful" | "chaotic";
 
-function buildConversation(decision: string, tone: Tone, horizon: string) {
-  const clean = decision.trim().replace(/\s+/g, " ");
-  const base = clean || "this";
-  const tones = {
-    regret: [
-      { from: "me", text: `Should I do ${base}?` },
-      { from: "future me", text: `You already know the answer.` },
-      { from: "me", text: "Tell me straight." },
-      { from: "future me", text: `You did it. It looked good for 3 days.\nThen ${horizon} later, you were annoyed every time you saw it.` }
-    ],
-    win: [
-      { from: "me", text: `Should I do ${base}?` },
-      { from: "future me", text: `Yes. This one actually ages well.` },
-      { from: "me", text: "For real?" },
-      { from: "future me", text: `For real. ${horizon} later, this ends up being one of your better calls.` }
-    ],
-    savage: [
-      { from: "me", text: `Should I do ${base}?` },
-      { from: "future me", text: `No. Be serious for one second.` },
-      { from: "me", text: "That bad?" },
-      { from: "future me", text: `Not even close to worth it. ${horizon} later, you will cringe every time you remember this.` }
-    ],
-    wholesome: [
-      { from: "me", text: `Should I do ${base}?` },
-      { from: "future me", text: `You're asking the right question.` },
-      { from: "me", text: "So… yes?" },
-      { from: "future me", text: `Yes. Small choice, big calm energy later.` }
-    ]
-  };
-
-  return tones[tone];
-}
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+});
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
-  const decision = String(body.decision ?? "");
-  const tone = String(body.tone ?? "regret") as Tone;
-  const horizon = String(body.horizon ?? "2 weeks");
 
-  return NextResponse.json({
-    title: "Future Me",
-    horizon,
-    tone,
-    messages: buildConversation(decision, tone, horizon),
-    caption:
-      tone === "regret"
-        ? `I asked my future self and got cooked 💀`
-        : tone === "savage"
-          ? `My future self did NOT let me off easy.`
-          : tone === "win"
-            ? `Future me said this one was actually smart.`
-            : `Small choice, better future.`
-  });
+  const decision = String(body.decision ?? "").trim();
+  const tone = String(body.tone ?? "honest").trim();
+  const horizon = String(body.horizon ?? "2 weeks").trim();
+
+  const systemPrompt = `
+You write short, intelligent, minimalist chat screenshots.
+Style:
+- calm, wise, concise
+- realistic future-self tone
+- 4 messages total max
+- no emojis unless the user tone is chaotic
+- no extra explanations
+- each line should feel like a real chat
+- make the future self sound insightful, not generic
+
+Return only JSON with:
+{
+  "title": string,
+  "horizon": string,
+  "tone": string,
+  "messages": [{"from":"me"|"future me","text":string,"time":string}],
+  "caption": string
+}
+`;
+
+  const userPrompt = `
+Decision: ${decision || "Should I do this?"}
+Tone: ${tone}
+Time jump: ${horizon}
+
+Make the future self noticeably wiser than the current self.
+Keep it minimal, elegant, and shareable.
+`;
+
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.8,
+      max_tokens: 500
+    });
+
+    const content = completion.choices[0]?.message?.content ?? "";
+
+    const parsed = JSON.parse(content);
+
+    return NextResponse.json({
+      title: parsed.title ?? "Future Me",
+      horizon: parsed.horizon ?? horizon,
+      tone: parsed.tone ?? tone,
+      messages: Array.isArray(parsed.messages) ? parsed.messages : [],
+      caption: parsed.caption ?? "A quieter kind of answer."
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        title: "Future Me",
+        horizon,
+        tone,
+        messages: [
+          { from: "me", text: decision || "Should I do this?", time: "now" },
+          { from: "future me", text: "Pause first. Clarity usually arrives before regret.", time: horizon }
+        ],
+        caption: "A quieter kind of answer."
+      },
+      { status: 200 }
+    );
+  }
 }
