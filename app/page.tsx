@@ -17,10 +17,19 @@ type PersistedState = {
   messages: Message[];
   input: string;
   mood: Mood;
+  isPro: boolean;
+  usage: DailyUsage;
 };
 
-const STORAGE_KEY = "future-me-memory-v1";
+type DailyUsage = {
+  date: string;
+  count: number;
+};
+
+const STORAGE_KEY = "future-me-v6";
+const USAGE_LIMIT_FREE = 5;
 const MAX_MESSAGES = 50;
+const MIN_REPLY_DELAY_MS = 850;
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
@@ -47,8 +56,26 @@ function formatClock() {
   });
 }
 
-function roleClass(role: Role) {
-  return role === "me" ? "me" : "future-me";
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function defaultUsage(): DailyUsage {
+  return { date: todayKey(), count: 0 };
+}
+
+function normalizeUsage(value: unknown): DailyUsage {
+  const today = todayKey();
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as DailyUsage).date === "string" &&
+    typeof (value as DailyUsage).count === "number"
+  ) {
+    const usage = value as DailyUsage;
+    if (usage.date === today) return { date: today, count: Math.max(0, usage.count) };
+  }
+  return defaultUsage();
 }
 
 function looksFinnish(text: string) {
@@ -59,67 +86,103 @@ function looksFinnish(text: string) {
   );
 }
 
-function fallbackReply(latestUserText: string, mood: Mood, lastAssistantText = "") {
-  const seed = `${latestUserText}|${lastAssistantText}|${mood}`;
+function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean, lastAssistantText = "") {
+  const seed = `${latestUserText}|${lastAssistantText}|${mood}|${isPro ? "pro" : "free"}`;
   const isFinnish = looksFinnish(seed);
 
-  const sets: Record<Mood, { en: string[]; fi: string[] }> = {
+  const freeSets: Record<Mood, { en: string[]; fi: string[] }> = {
     calm: {
       en: [
         "Pause first. You do not need to solve it in one move.",
-        "The answer is usually quieter than the fear around it.",
-        "You are closer to clarity than it feels."
+        "The answer is usually quieter than the fear around it."
       ],
       fi: [
         "Pysähdy ensin. Tätä ei tarvitse ratkaista yhdellä liikkeellä.",
-        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko.",
-        "Olet lähempänä selkeyttä kuin miltä tuntuu."
+        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko."
       ]
     },
     honest: {
       en: [
         "You are not really asking for information. You are asking for permission.",
-        "The cost matters more than the option itself.",
-        "You already know the direction. You are checking whether it is allowed."
+        "The cost matters more than the option itself."
       ],
       fi: [
         "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
-        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto.",
-        "Suunta on sinulla jo. Tarkistat vain, onko se muka sallittu."
+        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto."
       ]
     },
     direct: {
       en: [
         "This is simpler than it feels. Decide, then move.",
-        "The hesitation is the real problem, not the choice.",
-        "You already have enough information."
+        "The hesitation is the real problem, not the choice."
       ],
       fi: [
         "Tämä on yksinkertaisempi kuin miltä tuntuu. Päätä ja liiku.",
-        "Epäröinti on varsinainen ongelma, ei valinta.",
-        "Sinulla on jo riittävästi tietoa."
+        "Epäröinti on varsinainen ongelma, ei valinta."
       ]
     },
     wise: {
       en: [
         "The real question is what this changes, not whether it works.",
-        "You are trying to protect the future version of yourself from a consequence.",
         "The hidden cost is usually the part worth paying attention to."
       ],
       fi: [
         "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa.",
-        "Yrität suojella tulevaa itseäsi seuraukselta.",
         "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota."
       ]
     }
   };
 
-  const source = isFinnish ? sets[mood].fi : sets[mood].en;
+  const proSets: Record<Mood, { en: string[]; fi: string[] }> = {
+    calm: {
+      en: [
+        "You do not need more force. You need a cleaner decision.",
+        "The fact that this still feels heavy is the clue."
+      ],
+      fi: [
+        "Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.",
+        "Se että tämä tuntuu yhä raskaalta on jo vihje."
+      ]
+    },
+    honest: {
+      en: [
+        "You already know the answer, you are just negotiating with it.",
+        "What you call uncertainty is often just attachment to the easier path."
+      ],
+      fi: [
+        "Tiedät jo vastauksen, neuvottelet vain sen kanssa.",
+        "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun."
+      ]
+    },
+    direct: {
+      en: [
+        "Choose the thing you will respect tomorrow.",
+        "Do not optimize for comfort. Optimize for the version of you that has to live with it."
+      ],
+      fi: [
+        "Valitse se, mitä kunnioitat huomenna.",
+        "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa."
+      ]
+    },
+    wise: {
+      en: [
+        "The tradeoff is the point. Once you name it, the decision gets smaller.",
+        "You are not choosing between good and bad. You are choosing which cost is worth paying."
+      ],
+      fi: [
+        "Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.",
+        "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa."
+      ]
+    }
+  };
+
+  const source = (isPro ? proSets : freeSets)[mood];
+  const pool = isFinnish ? source.fi : source.en;
   const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  return source[Math.abs(score) % source.length];
+  return pool[Math.abs(score) % pool.length];
 }
 
-function createStyles(mobile: boolean): Record<string, CSSProperties> {
+function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProperties> {
   return {
     page: {
       height: "100dvh",
@@ -304,8 +367,8 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       width: 8,
       height: 8,
       borderRadius: 999,
-      background: "#4caf7a",
-      boxShadow: "0 0 0 5px rgba(76,175,122,0.16)"
+      background: isPro ? "#4caf7a" : "#8d6b3d",
+      boxShadow: isPro ? "0 0 0 5px rgba(76,175,122,0.16)" : "0 0 0 5px rgba(141,107,61,0.14)"
     },
     threadBody: {
       flex: "1 1 auto",
@@ -327,7 +390,8 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     messageRow: {
       display: "flex",
-      width: "100%"
+      width: "100%",
+      animation: "floatIn 220ms ease both"
     },
     meRow: {
       justifyContent: "flex-end"
@@ -372,7 +436,8 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     typingRow: {
       display: "flex",
-      justifyContent: "flex-start"
+      justifyContent: "flex-start",
+      animation: "floatIn 180ms ease both"
     },
     typingBubble: {
       padding: "12px 14px",
@@ -477,6 +542,108 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
       fontWeight: 600
+    },
+    paywallBackdrop: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(15,23,38,0.28)",
+      backdropFilter: "blur(8px)",
+      zIndex: 60
+    },
+    paywall: {
+      position: "fixed",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 70,
+      background: "rgba(255,255,255,0.98)",
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      borderTop: "1px solid rgba(16,24,38,0.08)",
+      padding: 16,
+      boxShadow: "0 -18px 60px rgba(16,24,38,0.18)",
+      display: "grid",
+      gap: 12
+    },
+    paywallHeader: {
+      display: "grid",
+      gap: 4
+    },
+    paywallTitle: {
+      fontSize: 20,
+      fontWeight: 900,
+      letterSpacing: "-0.04em"
+    },
+    paywallSub: {
+      fontSize: 13,
+      lineHeight: 1.5,
+      color: "rgba(16,24,38,0.62)"
+    },
+    featureCard: {
+      borderRadius: 20,
+      padding: 14,
+      background: "rgba(16,24,38,0.04)",
+      border: "1px solid rgba(16,24,38,0.06)"
+    },
+    featureList: {
+      display: "grid",
+      gap: 8,
+      marginTop: 4
+    },
+    featureItem: {
+      display: "flex",
+      alignItems: "flex-start",
+      gap: 10,
+      fontSize: 14,
+      lineHeight: 1.5,
+      color: "#101826"
+    },
+    featureDot: {
+      width: 8,
+      height: 8,
+      marginTop: 6,
+      borderRadius: 999,
+      background: "#101826",
+      flex: "0 0 auto"
+    },
+    paywallButtons: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap"
+    },
+    proButton: {
+      border: 0,
+      borderRadius: 16,
+      padding: "12px 16px",
+      background: "#101826",
+      color: "#f5efe6",
+      fontWeight: 800
+    },
+    ghostButton: {
+      border: "1px solid rgba(16,24,38,0.08)",
+      borderRadius: 16,
+      padding: "12px 16px",
+      background: "rgba(255,255,255,0.88)",
+      color: "#101826",
+      fontWeight: 700
+    },
+    hintLine: {
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)",
+      lineHeight: 1.5
+    },
+    freeTag: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "8px 12px",
+      borderRadius: 999,
+      background: isPro ? "rgba(76,175,122,0.12)" : "rgba(141,107,61,0.10)",
+      color: isPro ? "#206f47" : "#7c5a2f",
+      border: "1px solid rgba(16,24,38,0.06)",
+      fontSize: 12,
+      fontWeight: 700,
+      width: "fit-content"
     }
   };
 }
@@ -488,12 +655,17 @@ export default function Page() {
   const [mood, setMood] = useState<Mood>("honest");
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [isPro, setIsPro] = useState(false);
+  const [usage, setUsage] = useState<DailyUsage>(defaultUsage());
 
-  const streamRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const previewRef = useRef<HTMLDivElement | null>(null);
+  const UPGRADE_URL =
+    process.env.NEXT_PUBLIC_PRO_CHECKOUT_URL || process.env.NEXT_PUBLIC_PRO_UPGRADE_URL || "";
+
+  const remainingToday = isPro ? Infinity : Math.max(0, USAGE_LIMIT_FREE - usage.count);
 
   useEffect(() => {
     const update = () => setMobile(window.innerWidth < 900);
@@ -520,9 +692,22 @@ export default function Page() {
         if (parsed.mood && ["calm", "honest", "direct", "wise"].includes(parsed.mood)) {
           setMood(parsed.mood as Mood);
         }
+        if (typeof parsed.isPro === "boolean") {
+          setIsPro(parsed.isPro);
+        }
+        setUsage(normalizeUsage(parsed.usage));
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("pro") === "1" || params.get("pro") === "true") {
+        setIsPro(true);
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ isPro: true }));
+        params.delete("pro");
+        const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+        window.history.replaceState({}, "", nextUrl);
       }
     } catch {
-      // ignore
+      // ignore broken storage
     } finally {
       setHydrated(true);
     }
@@ -535,10 +720,12 @@ export default function Page() {
       JSON.stringify({
         messages: messages.slice(-MAX_MESSAGES),
         input,
-        mood
+        mood,
+        isPro,
+        usage
       } satisfies PersistedState)
     );
-  }, [messages, input, mood, hydrated]);
+  }, [messages, input, mood, isPro, usage, hydrated]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -551,19 +738,43 @@ export default function Page() {
   }, [input]);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen ? "hidden" : "";
+    document.body.style.overflow = menuOpen || paywallOpen ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [menuOpen]);
+  }, [menuOpen, paywallOpen]);
 
-  const styles = useMemo(() => createStyles(mobile), [mobile]);
+  const styles = useMemo(() => createStyles(mobile, isPro), [mobile, isPro]);
+
+  function persistPro(value: boolean) {
+    setIsPro(value);
+    const next: PersistedState = {
+      messages,
+      input,
+      mood,
+      isPro: value,
+      usage
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  }
+
+  function incrementUsage() {
+    const today = todayKey();
+    const nextUsage = usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
+    setUsage(nextUsage);
+    return nextUsage;
+  }
 
   async function sendMessage() {
     if (loading) return;
 
     const trimmed = input.trim();
     if (!trimmed) return;
+
+    if (!isPro && remainingToday <= 0) {
+      setPaywallOpen(true);
+      return;
+    }
 
     const userMessage: Message = {
       id: uid(),
@@ -577,11 +788,19 @@ export default function Page() {
     setInput("");
     setLoading(true);
 
+    if (!isPro) incrementUsage();
+
+    const startedAt = Date.now();
+
     try {
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages, mood })
+        body: JSON.stringify({
+          messages: nextMessages,
+          mood,
+          isPro
+        })
       });
 
       const data = await response.json().catch(() => ({}));
@@ -589,7 +808,12 @@ export default function Page() {
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
-          : fallbackReply(trimmed, mood, lastAssistant);
+          : fallbackReply(trimmed, mood, isPro, lastAssistant);
+
+      const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
 
       const assistantMessage: Message = {
         id: uid(),
@@ -600,10 +824,15 @@ export default function Page() {
 
       setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
     } catch {
+      const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+
       const assistantMessage: Message = {
         id: uid(),
         role: "future me",
-        text: fallbackReply(trimmed, mood),
+        text: fallbackReply(trimmed, mood, isPro),
         time: formatClock()
       };
 
@@ -621,38 +850,43 @@ export default function Page() {
     setMood("honest");
     setLoading(false);
     setMenuOpen(false);
+    setPaywallOpen(false);
+    setIsPro(false);
+    setUsage(defaultUsage());
     textareaRef.current?.focus();
   }
 
-  async function saveScreenshot() {
-    if (!previewRef.current) return;
+  async function shareConversation() {
+    const transcript = messages.map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`).join("\n\n");
 
-    const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(previewRef.current, {
-      backgroundColor: null,
-      scale: 2
-    });
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Future Me",
+          text: transcript
+        });
+        return;
+      }
 
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), "image/png");
-    });
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(transcript);
+      }
+    } catch {
+      // ignore
+    }
+  }
 
-    if (!blob) return;
+  function openUpgrade() {
+    setMenuOpen(false);
+    setPaywallOpen(true);
+  }
 
-    const file = new File([blob], `future-me-${Date.now()}.png`, { type: "image/png" });
-
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: "Future Me Screenshot"
-      });
+  function goUpgrade() {
+    if (UPGRADE_URL) {
+      window.location.href = UPGRADE_URL;
       return;
     }
-
-    const link = document.createElement("a");
-    link.download = file.name;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    setPaywallOpen(true);
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -711,40 +945,15 @@ export default function Page() {
           color: #101826;
         }
 
-        .fmApp {
-          position: relative;
-        }
-
-        .scene {
-          position: fixed;
-          pointer-events: none;
-          z-index: 0;
-          filter: blur(60px);
-          opacity: 0.5;
-        }
-
-        .sceneOne {
-          width: 360px;
-          height: 360px;
-          left: -120px;
-          top: -120px;
-          background: rgba(255, 255, 255, 0.55);
-        }
-
-        .sceneTwo {
-          width: 460px;
-          height: 460px;
-          right: -180px;
-          top: 120px;
-          background: rgba(191, 161, 118, 0.23);
-        }
-
-        .sceneThree {
-          width: 400px;
-          height: 400px;
-          left: 25%;
-          bottom: -220px;
-          background: rgba(134, 163, 174, 0.16);
+        @keyframes floatIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.99);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
         }
 
         @keyframes pulse {
@@ -759,6 +968,7 @@ export default function Page() {
       `}</style>
 
       {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
+      {paywallOpen && <div style={styles.paywallBackdrop} onClick={() => setPaywallOpen(false)} />}
 
       {menuOpen && (
         <aside style={styles.sheet}>
@@ -771,18 +981,68 @@ export default function Page() {
             <button style={styles.sheetButton} onClick={startOver}>
               Start over
             </button>
-            <button
-              style={styles.sheetButton}
-              onClick={() => {
-                void saveScreenshot();
-                setMenuOpen(false);
-              }}
-            >
-              Share screenshot
+            <button style={styles.sheetButton} onClick={shareConversation}>
+              Share conversation
+            </button>
+            <button style={styles.sheetButton} onClick={openUpgrade}>
+              Upgrade to Pro
             </button>
             <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
               Close
             </button>
+          </div>
+        </aside>
+      )}
+
+      {paywallOpen && (
+        <aside style={styles.paywall}>
+          <div style={styles.paywallHeader}>
+            <div style={styles.paywallTitle}>Future Me Pro</div>
+            <div style={styles.paywallSub}>
+              More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your
+              story.
+            </div>
+          </div>
+
+          <div style={styles.freeTag}>{isPro ? "Pro active" : `Free: ${remainingToday} left today`}</div>
+
+          <div style={styles.featureCard}>
+            <div style={styles.paywallSub}>What changes in Pro</div>
+            <div style={styles.featureList}>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Longer memory and fewer generic replies.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Mood modes that actually change the tone.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Unlimited messages and longer conversations.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Better sharing and a more personal feel.
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.paywallButtons}>
+            <button style={styles.proButton} onClick={goUpgrade} disabled={!UPGRADE_URL}>
+              {UPGRADE_URL ? "Go Pro" : "Set checkout URL"}
+            </button>
+            <button style={styles.ghostButton} onClick={shareConversation}>
+              Share conversation
+            </button>
+            <button style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>
+              Not now
+            </button>
+          </div>
+
+          <div style={styles.hintLine}>
+            Tip: set <code>NEXT_PUBLIC_PRO_CHECKOUT_URL</code> to your checkout link. After payment, redirect back with
+            <code>?pro=1</code> and the app unlocks automatically.
           </div>
         </aside>
       )}
@@ -805,10 +1065,13 @@ export default function Page() {
 
         <div style={styles.statusRow}>
           <span style={styles.pill}>
-            <span style={{ width: 7, height: 7, borderRadius: 999, background: "#4caf7a" }} />
-            online
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: isPro ? "#4caf7a" : "#8d6b3d" }} />
+            {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
           </span>
           <span style={styles.pill}>remembers context</span>
+          <button style={styles.pillAction} type="button" onClick={openUpgrade}>
+            Upgrade
+          </button>
         </div>
 
         <div style={styles.moodRow}>
@@ -824,7 +1087,7 @@ export default function Page() {
           ))}
         </div>
 
-        <section ref={previewRef} style={styles.threadCard}>
+        <section style={styles.threadCard}>
           <div style={styles.threadHeader}>
             <div style={styles.threadLeft}>
               <div style={styles.avatar}>FM</div>
@@ -841,7 +1104,7 @@ export default function Page() {
           </div>
 
           <div style={styles.threadBody}>
-            <div ref={streamRef} style={styles.stream}>
+            <div style={styles.stream}>
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -881,7 +1144,7 @@ export default function Page() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Write anything..."
+              placeholder={isPro ? "Write anything..." : "Write anything..."}
               rows={1}
             />
 
@@ -890,7 +1153,9 @@ export default function Page() {
             </button>
           </div>
 
-          <div style={styles.helper}>Press Enter to send · Shift+Enter for a new line</div>
+          <div style={styles.helper}>
+            Press Enter to send · Shift+Enter for a new line · {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
+          </div>
         </section>
       </div>
     </main>
