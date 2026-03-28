@@ -3,68 +3,93 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 
-type Tone = "calm" | "honest" | "direct" | "hopeful" | "chaotic";
+type Role = "me" | "future me";
 
 type Message = {
-  from: "me" | "future me";
+  id: string;
+  role: Role;
   text: string;
   time: string;
 };
 
-const templates = [
-  "Should I buy this?",
-  "Should I text them?",
-  "Should I post this?",
-  "Should I skip the gym?",
-  "Should I go for it?",
-  "Should I trust this?",
-  "Should I stay up tonight?",
-  "Should I send this message?"
-];
-
-const toneLabels: Record<Tone, string> = {
-  calm: "Calm",
-  honest: "Honest",
-  direct: "Direct",
-  hopeful: "Hopeful",
-  chaotic: "Chaotic"
+type PersistedState = {
+  messages: Message[];
+  input: string;
 };
 
-const fallbackMessages = (decision: string, horizon: string): Message[] => [
-  { from: "me", text: decision || "Should I do this?", time: "now" },
-  { from: "future me", text: "Pause first. Clarity usually arrives before regret.", time: "soon" },
-  { from: "me", text: "So what now?", time: "soon" },
-  { from: "future me", text: `Give it ${horizon || "2 weeks"}.`, time: horizon || "2 weeks" }
-];
+const STORAGE_KEY = "future-me-free-chat-v1";
+const MAX_MESSAGES = 40;
 
-function captionFor(tone: Tone) {
-  switch (tone) {
-    case "calm":
-      return "I paused before I decided.";
-    case "honest":
-      return "Future me was more honest than I was.";
-    case "direct":
-      return "A simple answer was enough.";
-    case "hopeful":
-      return "A small pause changed the outcome.";
-    case "chaotic":
-      return "Future me turned it into a story.";
+const WELCOME_MESSAGE: Message = {
+  id: "welcome",
+  role: "future me",
+  text: "Write one thought. I will keep the conversation going.",
+  time: "now"
+};
+
+function uid() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function looksFinnish(text: string) {
+  const t = text.toLowerCase();
+  return (
+    /[äöå]/.test(t) ||
+    /(suomeksi|voisitko|voinko|mikä|mitä|tämä|tätä|olen|ehkä|miksi|nyt|kyllä|ei|siksi|koska)/i.test(t)
+  );
+}
+
+function fallbackReply(latestUserText: string) {
+  if (looksFinnish(latestUserText)) {
+    return "Et taida hakea vain vastausta. Haluat että päätös tuntuisi vähemmän raskaalta. Se on eri asia.";
   }
+
+  return "You are not really asking for information. You are asking for permission. That is usually the useful part to notice.";
+}
+
+function extractReply(raw: string) {
+  const trimmed = raw.trim();
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed.reply === "string") {
+      return parsed.reply.trim();
+    }
+  } catch {
+    // ignore
+  }
+
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+
+  if (start >= 0 && end > start) {
+    try {
+      const parsed = JSON.parse(trimmed.slice(start, end + 1));
+      if (parsed && typeof parsed.reply === "string") {
+        return parsed.reply.trim();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const withoutFences = trimmed.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+  return withoutFences || null;
 }
 
 function createStyles(mobile: boolean): Record<string, CSSProperties> {
   return {
     page: {
       minHeight: "100vh",
+      padding: mobile ? 12 : 18,
       background:
-        "linear-gradient(180deg, #f5efe6 0%, #efe7db 100%)",
+        "linear-gradient(180deg, #f5efe6 0%, #eee6da 100%)",
       color: "#101826",
       fontFamily:
-        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      padding: mobile ? 10 : 18
+        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     },
     shell: {
-      maxWidth: 760,
+      maxWidth: 780,
       margin: "0 auto",
       display: "grid",
       gap: 14
@@ -74,7 +99,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
-      padding: "2px 2px 8px"
+      padding: "2px 2px 6px"
     },
     topTitle: {
       display: "flex",
@@ -91,24 +116,53 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     brandSub: {
       fontSize: 12,
-      color: "rgba(16,24,38,0.55)"
+      color: "rgba(16,24,38,0.56)"
     },
     iconButton: {
       width: 42,
       height: 42,
       borderRadius: 14,
       border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.72)",
+      background: "rgba(255,255,255,0.78)",
       color: "#101826",
       display: "grid",
       placeItems: "center",
       cursor: "pointer",
       boxShadow: "0 12px 26px rgba(16,24,38,0.05)"
     },
+    hero: {
+      display: "grid",
+      gap: 8,
+      padding: "4px 0 2px"
+    },
+    eyebrow: {
+      display: "inline-flex",
+      width: "fit-content",
+      padding: "8px 12px",
+      borderRadius: 999,
+      background: "rgba(16,24,38,0.05)",
+      border: "1px solid rgba(16,24,38,0.06)",
+      fontSize: 13,
+      color: "rgba(16,24,38,0.72)"
+    },
+    title: {
+      margin: 0,
+      fontSize: mobile ? "34px" : "clamp(40px, 5vw, 66px)",
+      lineHeight: 0.95,
+      letterSpacing: "-0.055em",
+      maxWidth: mobile ? 12 : 11
+    },
+    subtitle: {
+      margin: 0,
+      maxWidth: 680,
+      color: "rgba(16,24,38,0.68)",
+      fontSize: 17,
+      lineHeight: 1.6
+    },
     chatCard: {
       borderRadius: 28,
-      background: "rgba(255,255,255,0.58)",
-      border: "1px solid rgba(16,24,38,0.06)",
+      background: "rgba(255,255,255,0.66)",
+      border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 18px 50px rgba(16,24,38,0.08)",
       overflow: "hidden"
     },
@@ -119,7 +173,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       gap: 12,
       padding: mobile ? 14 : 16,
       borderBottom: "1px solid rgba(16,24,38,0.06)",
-      background: "rgba(255,255,255,0.34)",
+      background: "rgba(255,255,255,0.38)",
       backdropFilter: "blur(10px)"
     },
     chatHeaderLeft: {
@@ -157,7 +211,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       alignItems: "center",
       gap: 8
     },
-    chip: {
+    statusChip: {
       padding: "8px 12px",
       borderRadius: 999,
       background: "rgba(16,24,38,0.05)",
@@ -168,36 +222,16 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     chatBody: {
       padding: mobile ? 14 : 16,
-      minHeight: mobile ? 560 : 620,
+      minHeight: mobile ? 520 : 600,
       display: "flex",
       flexDirection: "column",
       gap: 12
-    },
-    divider: {
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-      margin: "2px 0 2px"
-    },
-    dividerLine: {
-      height: 1,
-      flex: 1,
-      background: "linear-gradient(90deg, transparent, rgba(16,24,38,0.16), transparent)"
-    },
-    dividerText: {
-      fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
-      padding: "5px 10px",
-      borderRadius: 999,
-      background: "rgba(16,24,38,0.04)",
-      border: "1px solid rgba(16,24,38,0.06)"
     },
     messages: {
       display: "flex",
       flexDirection: "column",
       gap: 10,
-      flex: 1,
-      justifyContent: "flex-start"
+      flex: 1
     },
     row: {
       display: "flex"
@@ -228,64 +262,42 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       fontSize: 11,
       color: "rgba(16,24,38,0.5)"
     },
-    composerShell: {
-      borderRadius: 28,
-      background: "rgba(255,255,255,0.62)",
-      border: "1px solid rgba(16,24,38,0.06)",
-      boxShadow: "0 18px 50px rgba(16,24,38,0.06)",
-      overflow: "hidden"
-    },
-    composerTop: {
-      padding: mobile ? 14 : 16,
-      display: "grid",
-      gap: 10,
-      borderBottom: "1px solid rgba(16,24,38,0.06)"
-    },
-    controlsRow: {
-      display: "grid",
-      gridTemplateColumns: mobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
-      gap: 10
-    },
-    control: {
-      display: "grid",
-      gap: 6
-    },
-    label: {
-      fontSize: 12,
-      fontWeight: 600,
-      color: "rgba(16,24,38,0.62)"
-    },
-    select: {
-      width: "100%",
-      borderRadius: 16,
-      border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.88)",
-      color: "#101826",
-      padding: "11px 12px",
-      outline: "none"
-    },
-    templateRow: {
+    typingRow: {
       display: "flex",
-      flexWrap: "wrap",
-      gap: 8
+      justifyContent: "flex-start"
     },
-    templateChip: {
-      borderRadius: 999,
-      padding: "9px 12px",
-      border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.82)",
-      color: "#101826",
-      fontSize: 13,
-      cursor: "pointer"
+    typingBubble: {
+      maxWidth: mobile ? "84%" : "72%",
+      padding: "12px 14px",
+      borderRadius: 18,
+      fontSize: 14,
+      lineHeight: 1.5,
+      background: "rgba(16,24,38,0.05)",
+      color: "rgba(16,24,38,0.62)",
+      borderTopLeftRadius: 8
     },
-    composerBottom: {
+    composerCard: {
+      position: "sticky",
+      bottom: 12,
+      zIndex: 5,
+      borderRadius: 28,
+      background: "rgba(255,255,255,0.74)",
+      border: "1px solid rgba(16,24,38,0.07)",
+      boxShadow: "0 18px 50px rgba(16,24,38,0.06)",
+      overflow: "hidden",
+      backdropFilter: "blur(10px)"
+    },
+    composerInner: {
       padding: mobile ? 14 : 16,
-      display: "grid",
-      gap: 12
+      display: "flex",
+      gap: 10,
+      alignItems: "flex-end",
+      flexDirection: mobile ? "column" : "row"
     },
     textarea: {
       width: "100%",
-      minHeight: 86,
+      minHeight: 58,
+      maxHeight: 160,
       resize: "vertical",
       borderRadius: 18,
       border: "1px solid rgba(16,24,38,0.08)",
@@ -294,32 +306,21 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       padding: "14px 14px",
       outline: "none",
       lineHeight: 1.5,
-      fontSize: 15
+      fontSize: 15,
+      flex: 1
     },
-    actions: {
-      display: "flex",
-      flexWrap: "wrap",
-      gap: 10
-    },
-    primaryButton: {
+    sendButton: {
+      minWidth: mobile ? "100%" : 92,
       border: "0",
       borderRadius: 16,
-      padding: "12px 16px",
+      padding: "13px 16px",
       background: "#101826",
       color: "#f5efe6",
       fontWeight: 700,
       cursor: "pointer"
     },
-    secondaryButton: {
-      border: "1px solid rgba(16,24,38,0.08)",
-      borderRadius: 16,
-      padding: "12px 16px",
-      background: "rgba(255,255,255,0.82)",
-      color: "#101826",
-      fontWeight: 600,
-      cursor: "pointer"
-    },
-    footerHint: {
+    hint: {
+      padding: "0 16px 16px",
       fontSize: 12,
       color: "rgba(16,24,38,0.54)",
       lineHeight: 1.5
@@ -327,11 +328,11 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     overlay: {
       position: "fixed",
       inset: 0,
-      background: "rgba(15, 23, 38, 0.26)",
+      background: "rgba(15, 23, 38, 0.24)",
       backdropFilter: "blur(4px)",
       zIndex: 40
     },
-    menuSheet: {
+    sheet: {
       position: "fixed",
       left: 0,
       right: 0,
@@ -346,26 +347,26 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       display: "grid",
       gap: 12
     },
-    menuTitle: {
+    sheetTitle: {
       fontSize: 18,
       fontWeight: 800,
       letterSpacing: "-0.03em"
     },
-    menuSub: {
+    sheetSub: {
       fontSize: 12,
       color: "rgba(16,24,38,0.56)"
     },
-    menuSection: {
+    sheetSection: {
       display: "grid",
       gap: 8
     },
-    menuButton: {
+    sheetButton: {
       width: "100%",
       textAlign: "left",
       borderRadius: 16,
       padding: "12px 14px",
       border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.86)",
+      background: "rgba(255,255,255,0.88)",
       color: "#101826",
       fontWeight: 600
     },
@@ -414,20 +415,18 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
 
 export default function Page() {
   const [mobile, setMobile] = useState(false);
-  const [template, setTemplate] = useState(templates[1]);
-  const [decision, setDecision] = useState("Should I text them?");
-  const [tone, setTone] = useState<Tone>("honest");
-  const [horizon, setHorizon] = useState("2 weeks");
-  const [messages, setMessages] = useState<Message[]>(
-    fallbackMessages("Should I text them?", "2 weeks")
-  );
-  const [isLoading, setIsLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(true);
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [proOpen, setProOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
   const previewRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  const upgradeUrl = process.env.NEXT_PUBLIC_PRO_UPGRADE_URL || "";
 
   useEffect(() => {
     const update = () => setMobile(window.innerWidth < 900);
@@ -437,54 +436,108 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    sendToAI("Should I text them?", "honest", "2 weeks");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<PersistedState>;
+        if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+          setMessages(parsed.messages.slice(-MAX_MESSAGES));
+        }
+        if (typeof parsed.input === "string") {
+          setInput(parsed.input);
+        }
+      }
+    } catch {
+      // ignore broken storage
+    } finally {
+      setHydrated(true);
+    }
   }, []);
 
-  const styles = useMemo(() => createStyles(mobile), [mobile]);
-  const caption = useMemo(() => captionFor(tone), [tone]);
+  useEffect(() => {
+    if (!hydrated) return;
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        messages: messages.slice(-MAX_MESSAGES),
+        input
+      } satisfies PersistedState)
+    );
+  }, [messages, input, hydrated]);
 
-  async function sendToAI(nextDecision = decision, nextTone = tone, nextHorizon = horizon) {
-    setIsLoading(true);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading]);
+
+  const styles = useMemo(() => createStyles(mobile), [mobile]);
+
+  async function sendMessage() {
+    if (loading) return;
+
+    const trimmed = input.trim();
+    if (!trimmed) return;
+
+    const userMessage: Message = {
+      id: uid(),
+      role: "me",
+      text: trimmed,
+      time: "now"
+    };
+
+    const nextMessages = [...messages, userMessage].slice(-MAX_MESSAGES);
+    setMessages(nextMessages);
+    setInput("");
+    setLoading(true);
+
     try {
-      const res = await fetch("/api/generate", {
+      const response = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({
-          decision: nextDecision,
-          tone: nextTone,
-          horizon: nextHorizon
+          messages: nextMessages
         })
       });
 
-      const data = await res.json();
-      setMessages(Array.isArray(data?.messages) && data.messages.length > 0 ? data.messages : fallbackMessages(nextDecision, nextHorizon));
+      const data = await response.json().catch(() => ({}));
+      const replyText =
+        typeof data?.reply === "string" && data.reply.trim()
+          ? data.reply.trim()
+          : fallbackReply(trimmed);
+
+      const assistantMessage: Message = {
+        id: uid(),
+        role: "future me",
+        text: replyText,
+        time: "soon"
+      };
+
+      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
     } catch {
-      setMessages(fallbackMessages(nextDecision, nextHorizon));
+      const assistantMessage: Message = {
+        id: uid(),
+        role: "future me",
+        text: fallbackReply(trimmed),
+        time: "soon"
+      };
+
+      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
     } finally {
-      setIsLoading(false);
+      setLoading(false);
+      setTimeout(() => textareaRef.current?.focus(), 0);
     }
   }
 
-  const handleSend = async () => {
-    await sendToAI(decision, tone, horizon);
-    setComposerOpen(false);
-  };
+  function startOver() {
+    setMessages([WELCOME_MESSAGE]);
+    setInput("");
+    setLoading(false);
+    setMenuOpen(false);
+    textareaRef.current?.focus();
+  }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const copyCaption = async () => {
-    await navigator.clipboard.writeText(caption);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
-
-  const downloadOrShareScreenshot = async () => {
+  async function saveScreenshot() {
     if (!previewRef.current) return;
 
     const html2canvas = (await import("html2canvas")).default;
@@ -504,8 +557,7 @@ export default function Page() {
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       await navigator.share({
         files: [file],
-        title: "Future Me Screenshot",
-        text: caption
+        title: "Future Me Screenshot"
       });
       return;
     }
@@ -514,6 +566,24 @@ export default function Page() {
     link.download = file.name;
     link.href = canvas.toDataURL("image/png");
     link.click();
+  }
+
+  const openUpgrade = () => {
+    setProOpen(true);
+    setMenuOpen(false);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
+    }
+  };
+
+  const goPro = () => {
+    if (upgradeUrl) {
+      window.open(upgradeUrl, "_blank", "noopener,noreferrer");
+    }
   };
 
   return (
@@ -522,83 +592,61 @@ export default function Page() {
       {proOpen && <div style={styles.overlay} onClick={() => setProOpen(false)} />}
 
       {menuOpen && (
-        <div style={styles.menuSheet}>
+        <div style={styles.sheet}>
           <div>
-            <div style={styles.menuTitle}>Future Me</div>
-            <div style={styles.menuSub}>Quick actions</div>
+            <div style={styles.sheetTitle}>Future Me</div>
+            <div style={styles.sheetSub}>Quick actions</div>
           </div>
 
-          <div style={styles.menuSection}>
+          <div style={styles.sheetSection}>
             <button
-              style={styles.menuButton}
+              style={styles.sheetButton}
               onClick={() => {
-                setComposerOpen(true);
-                textareaRef.current?.focus();
+                startOver();
                 setMenuOpen(false);
               }}
             >
-              New chat
+              Start over
             </button>
             <button
-              style={styles.menuButton}
+              style={styles.sheetButton}
               onClick={() => {
-                setComposerOpen((v) => !v);
+                void saveScreenshot();
                 setMenuOpen(false);
               }}
             >
-              {composerOpen ? "Hide composer" : "Show composer"}
+              Save screenshot
             </button>
-            <button
-              style={styles.menuButton}
-              onClick={() => {
-                setProOpen(true);
-                setMenuOpen(false);
-              }}
-            >
+            <button style={styles.sheetButton} onClick={openUpgrade}>
               Upgrade to Pro
             </button>
-          </div>
-
-          <div style={styles.menuSection}>
-            <div style={styles.menuSub}>Templates</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {templates.slice(0, 6).map((t) => (
-                <button
-                  key={t}
-                  style={styles.templateChip}
-                  onClick={() => {
-                    setTemplate(t);
-                    setDecision(t);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
+            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
+              Close
+            </button>
           </div>
         </div>
       )}
 
       {proOpen && (
-        <div style={styles.menuSheet}>
+        <div style={styles.sheet}>
           <div>
-            <div style={styles.menuTitle}>Go Pro</div>
-            <div style={styles.menuSub}>Unlock more generations and better exports</div>
+            <div style={styles.sheetTitle}>Go Pro</div>
+            <div style={styles.sheetSub}>Unlock more generations and cleaner exports</div>
           </div>
 
           <div style={styles.proCard}>
             <div style={styles.proTitle}>Pro features</div>
             <div style={styles.proText}>
-              More generations, saved history, and cleaner export flow.
+              More generations, saved history, and a smoother export flow.
             </div>
-          </div>
-
-          <div style={styles.proActions}>
-            <button style={styles.proButton}>Upgrade now</button>
-            <button style={styles.proSecondary} onClick={() => setProOpen(false)}>
-              Not now
-            </button>
+            <div style={styles.proActions}>
+              <button style={styles.proButton} onClick={goPro} disabled={!upgradeUrl}>
+                {upgradeUrl ? "Upgrade now" : "Add upgrade link"}
+              </button>
+              <button style={styles.proSecondary} onClick={() => setProOpen(false)}>
+                Not now
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -611,164 +659,88 @@ export default function Page() {
 
           <div style={styles.topTitle}>
             <div style={styles.brand}>Future Me</div>
-            <div style={styles.brandSub}>quiet decision screenshots</div>
+            <div style={styles.brandSub}>free conversation · persistent chat</div>
           </div>
 
-          <button style={styles.iconButton} aria-label="Upgrade" onClick={() => setProOpen(true)}>
+          <button style={styles.iconButton} aria-label="Upgrade" onClick={openUpgrade}>
             ⋯
           </button>
         </header>
 
-        <div style={styles.chatCard} ref={previewRef}>
+        <section style={styles.hero}>
+          <div style={styles.eyebrow}>Continue the conversation</div>
+          <h1 style={styles.title}>Talk to your future self.</h1>
+          <p style={styles.subtitle}>
+            A free-form chat that keeps the thread, remembers the history, and stays clean on mobile.
+          </p>
+        </section>
+
+        <section ref={previewRef} style={styles.chatCard}>
           <div style={styles.chatHeader}>
             <div style={styles.chatHeaderLeft}>
               <div style={styles.avatar}>FM</div>
               <div style={styles.chatNameWrap}>
                 <div style={styles.chatName}>Future Me</div>
-                <div style={styles.chatHint}>iMessage-inspired private chat</div>
+                <div style={styles.chatHint}>private chat · persistent</div>
               </div>
             </div>
 
             <div style={styles.chatHeaderRight}>
-              <div style={styles.chip}>{toneLabels[tone]}</div>
+              <div style={styles.statusChip}>{loading ? "typing..." : "online"}</div>
             </div>
           </div>
 
           <div style={styles.chatBody}>
-            <div style={styles.divider}>
-              <div style={styles.dividerLine} />
-              <div style={styles.dividerText}>— {horizon.toLowerCase()} —</div>
-              <div style={styles.dividerLine} />
-            </div>
-
             <div style={styles.messages}>
-              {messages.map((msg, index) => (
+              {messages.map((message) => (
                 <div
-                  key={`${msg.from}-${index}`}
+                  key={message.id}
                   style={{
                     ...styles.row,
-                    justifyContent: msg.from === "me" ? "flex-end" : "flex-start"
+                    justifyContent: message.role === "me" ? "flex-end" : "flex-start"
                   }}
                 >
                   <div
                     style={{
                       ...styles.bubble,
-                      ...(msg.from === "me" ? styles.bubbleMe : styles.bubbleFuture)
+                      ...(message.role === "me" ? styles.bubbleMe : styles.bubbleFuture)
                     }}
                   >
-                    {msg.text}
-                    <div style={styles.time}>{msg.time}</div>
+                    {message.text}
+                    <div style={styles.time}>{message.time}</div>
                   </div>
                 </div>
               ))}
 
-              {isLoading && (
-                <div style={{ ...styles.row, justifyContent: "flex-start" }}>
-                  <div style={{ ...styles.bubble, ...styles.bubbleFuture, opacity: 0.8 }}>
-                    typing…
-                  </div>
+              {loading && (
+                <div style={styles.typingRow}>
+                  <div style={styles.typingBubble}>typing…</div>
                 </div>
               )}
+
+              <div ref={bottomRef} />
             </div>
           </div>
-        </div>
+        </section>
 
-        <div style={styles.composerShell}>
-          <div style={styles.composerTop}>
-            <div style={styles.controlsRow}>
-              <div style={styles.control}>
-                <div style={styles.label}>Template</div>
-                <select
-                  value={template}
-                  onChange={(e) => {
-                    setTemplate(e.target.value);
-                    setDecision(e.target.value);
-                  }}
-                  style={styles.select}
-                >
-                  {templates.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
+        <section style={styles.composerCard}>
+          <div style={styles.composerInner}>
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Write anything..."
+              style={styles.textarea}
+            />
 
-              <div style={styles.control}>
-                <div style={styles.label}>Tone</div>
-                <select
-                  value={tone}
-                  onChange={(e) => setTone(e.target.value as Tone)}
-                  style={styles.select}
-                >
-                  {Object.entries(toneLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={styles.control}>
-                <div style={styles.label}>Time jump</div>
-                <select
-                  value={horizon}
-                  onChange={(e) => setHorizon(e.target.value)}
-                  style={styles.select}
-                >
-                  <option>Tomorrow</option>
-                  <option>2 weeks</option>
-                  <option>1 month</option>
-                  <option>6 months</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={styles.templateRow}>
-              {templates.slice(0, 4).map((t) => (
-                <button
-                  key={t}
-                  style={styles.templateChip}
-                  onClick={() => {
-                    setTemplate(t);
-                    setDecision(t);
-                  }}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
+            <button style={styles.sendButton} onClick={sendMessage} disabled={loading}>
+              {loading ? "Sending..." : "Send"}
+            </button>
           </div>
 
-          {composerOpen && (
-            <div style={styles.composerBottom}>
-              <textarea
-                ref={textareaRef}
-                value={decision}
-                onChange={(e) => setDecision(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Write one decision..."
-                style={styles.textarea}
-              />
-
-              <div style={styles.actions}>
-                <button onClick={handleSend} style={styles.primaryButton} disabled={isLoading}>
-                  {isLoading ? "Sending..." : "Send"}
-                </button>
-                <button onClick={downloadOrShareScreenshot} style={styles.secondaryButton}>
-                  Save / share
-                </button>
-                <button onClick={copyCaption} style={styles.secondaryButton}>
-                  {copied ? "Caption copied" : "Copy caption"}
-                </button>
-              </div>
-
-              <div style={styles.footerHint}>
-                Press Enter to send. Menu opens the bottom sheet. Three dots open Pro.
-              </div>
-            </div>
-          )}
-        </div>
+          <div style={styles.hint}>Press Enter to send · Shift+Enter for a new line</div>
+        </section>
       </div>
     </main>
   );
