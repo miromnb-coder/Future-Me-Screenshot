@@ -17,64 +17,100 @@ function looksFinnish(text: string) {
   );
 }
 
-function pickFallback(latestUserText: string, lastAssistantText: string, mood: Mood) {
-  const seed = `${latestUserText}|${lastAssistantText}|${mood}`;
+function pickFallback(latestUserText: string, lastAssistantText: string, mood: Mood, isPro: boolean) {
+  const seed = `${latestUserText}|${lastAssistantText}|${mood}|${isPro ? "pro" : "free"}`;
   const isFinnish = looksFinnish(seed);
 
-  const variants = {
+  const freeSets: Record<Mood, { en: string[]; fi: string[] }> = {
     calm: {
       en: [
         "Pause first. You do not need to solve it in one move.",
-        "The answer is usually quieter than the fear around it.",
-        "You are closer to clarity than it feels."
+        "The answer is usually quieter than the fear around it."
       ],
       fi: [
         "Pysähdy ensin. Tätä ei tarvitse ratkaista yhdellä liikkeellä.",
-        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko.",
-        "Olet lähempänä selkeyttä kuin miltä tuntuu."
+        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko."
       ]
     },
     honest: {
       en: [
         "You are not really asking for information. You are asking for permission.",
-        "The cost matters more than the option itself.",
-        "You already know the direction. You are checking whether it is allowed."
+        "The cost matters more than the option itself."
       ],
       fi: [
         "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
-        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto.",
-        "Suunta on sinulla jo. Tarkistat vain, onko se muka sallittu."
+        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto."
       ]
     },
     direct: {
       en: [
         "This is simpler than it feels. Decide, then move.",
-        "The hesitation is the real problem, not the choice.",
-        "You already have enough information."
+        "The hesitation is the real problem, not the choice."
       ],
       fi: [
         "Tämä on yksinkertaisempi kuin miltä tuntuu. Päätä ja liiku.",
-        "Epäröinti on varsinainen ongelma, ei valinta.",
-        "Sinulla on jo riittävästi tietoa."
+        "Epäröinti on varsinainen ongelma, ei valinta."
       ]
     },
     wise: {
       en: [
         "The real question is what this changes, not whether it works.",
-        "You are trying to protect the future version of yourself from a consequence.",
         "The hidden cost is usually the part worth paying attention to."
       ],
       fi: [
         "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa.",
-        "Yrität suojella tulevaa itseäsi seuraukselta.",
         "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota."
       ]
     }
-  } as const;
+  };
 
-  const source = isFinnish ? variants[mood].fi : variants[mood].en;
+  const proSets: Record<Mood, { en: string[]; fi: string[] }> = {
+    calm: {
+      en: [
+        "You do not need more force. You need a cleaner decision.",
+        "The fact that this still feels heavy is the clue."
+      ],
+      fi: [
+        "Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.",
+        "Se että tämä tuntuu yhä raskaalta on jo vihje."
+      ]
+    },
+    honest: {
+      en: [
+        "You already know the answer, you are just negotiating with it.",
+        "What you call uncertainty is often just attachment to the easier path."
+      ],
+      fi: [
+        "Tiedät jo vastauksen, neuvottelet vain sen kanssa.",
+        "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun."
+      ]
+    },
+    direct: {
+      en: [
+        "Choose the thing you will respect tomorrow.",
+        "Do not optimize for comfort. Optimize for the version of you that has to live with it."
+      ],
+      fi: [
+        "Valitse se, mitä kunnioitat huomenna.",
+        "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa."
+      ]
+    },
+    wise: {
+      en: [
+        "The tradeoff is the point. Once you name it, the decision gets smaller.",
+        "You are not choosing between good and bad. You are choosing which cost is worth paying."
+      ],
+      fi: [
+        "Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.",
+        "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa."
+      ]
+    }
+  };
+
+  const source = (isPro ? proSets : freeSets)[mood];
+  const pool = isFinnish ? source.fi : source.en;
   const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  return source[Math.abs(score) % source.length];
+  return pool[Math.abs(score) % pool.length];
 }
 
 function extractReply(raw: string) {
@@ -116,6 +152,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
 
   const mood = String(body.mood ?? "honest").trim().toLowerCase() as Mood;
+  const isPro = Boolean(body.isPro);
   const incoming = Array.isArray(body.messages) ? body.messages : [];
 
   const history: ChatMessage[] = incoming
@@ -135,7 +172,7 @@ export async function POST(request: Request) {
       text: message.text.trim(),
       time: typeof message.time === "string" ? message.time : undefined
     }))
-    .slice(-14);
+    .slice(-(isPro ? 14 : 8));
 
   const latestUserMessage =
     [...history].reverse().find((message) => message.role === "me")?.text.trim() ?? "";
@@ -147,18 +184,23 @@ export async function POST(request: Request) {
 
   if (!apiKey) {
     return NextResponse.json({
-      reply: pickFallback(latestUserMessage, lastAssistantMessage, mood)
+      reply: pickFallback(latestUserMessage, lastAssistantMessage, mood, isPro)
     });
   }
 
   const systemPrompt = `
 You are the user's future self continuing an ongoing private chat.
 
+Tier: ${isPro ? "Pro" : "Free"}
 Mood: ${mood}
 
 Reply to the latest user message using the full conversation for context.
 Mirror the user's language naturally. If the latest user message is Finnish, answer in Finnish.
 If it is English, answer in English.
+
+Tier guidance:
+- Free: shorter, lighter, still intelligent. 1 to 2 short sentences.
+- Pro: deeper, more precise, a little more context-aware. 1 to 3 short sentences.
 
 Mood guidance:
 - calm: steady, reflective, soft
@@ -167,8 +209,7 @@ Mood guidance:
 - wise: thoughtful, slightly unsettling, precise
 
 Rules:
-- Keep it short: 1 to 3 sentences max.
-- Be specific, human, and context-aware.
+- Be specific and human.
 - Use the conversation history to avoid repeating yourself.
 - If the last assistant reply already said one angle, choose a different angle.
 - Do not sound like a therapist or an assistant.
@@ -208,7 +249,7 @@ Keep it fresh. Do not reuse the same idea or wording from the last reply.
         model: "llama-3.3-70b-versatile",
         temperature: 1,
         top_p: 0.98,
-        max_tokens: 160,
+        max_tokens: isPro ? 180 : 110,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
@@ -220,19 +261,19 @@ Keep it fresh. Do not reuse the same idea or wording from the last reply.
       const text = await response.text().catch(() => "");
       console.error("Groq error:", response.status, text);
       return NextResponse.json({
-        reply: pickFallback(latestUserMessage, lastAssistantMessage, mood)
+        reply: pickFallback(latestUserMessage, lastAssistantMessage, mood, isPro)
       });
     }
 
     const data = await response.json();
     const raw = data?.choices?.[0]?.message?.content ?? "";
-    const reply = extractReply(raw) || pickFallback(latestUserMessage, lastAssistantMessage, mood);
+    const reply = extractReply(raw) || pickFallback(latestUserMessage, lastAssistantMessage, mood, isPro);
 
     return NextResponse.json({ reply });
   } catch (error) {
     console.error("Generate route error:", error);
     return NextResponse.json({
-      reply: pickFallback(latestUserMessage, lastAssistantMessage, mood)
+      reply: pickFallback(latestUserMessage, lastAssistantMessage, mood, isPro)
     });
   }
 }
