@@ -1,88 +1,99 @@
-:root {
-  color-scheme: light;
-}
-
 * {
   box-sizing: border-box;
 }
 
-html,
 body {
   margin: 0;
-  min-height: 100%;
-  background:
-    radial-gradient(circle at top left, rgba(224, 204, 168, 0.22), transparent 22%),
-    radial-gradient(circle at top right, rgba(150, 180, 160, 0.18), transparent 20%),
-    linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
-  color: #18202b;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background: #f4efe7;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #111;
 }
 
-body {
-  overflow-x: hidden;
+.app {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 16px;
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+/* HEADER */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
 }
 
-button {
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+.icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  background: white;
+}
+
+.title {
+  text-align: center;
+}
+
+.logo {
+  font-weight: 700;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #777;
+}
+
+/* CHAT */
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.bubble {
+  padding: 12px 14px;
+  border-radius: 16px;
+  max-width: 80%;
+}
+
+.me {
+  background: #111;
+  color: white;
+  align-self: flex-end;
+}
+
+.future {
+  background: #eae6de;
+}
+
+/* INPUT */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
 }
 
 select,
-textarea,
-input {
-  outline: none;
-}
-
-select:focus,
-textarea:focus,
-input:focus,
-button:focus-visible {
-  outline: 2px solid rgba(24, 32, 43, 0.16);
-  outline-offset: 2px;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-img,
-svg {
-  display: block;
-  max-width: 100%;
-}
-
-::selection {
-  background: rgba(24, 32, 43, 0.14);
-  color: #18202b;
-}
-
-/* Make native controls look cleaner on iPhone/Safari */
-select {
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
+textarea {
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  padding: 10px;
 }
 
 textarea {
-  resize: vertical;
+  min-height: 80px;
 }
 
-@media (max-width: 900px) {
-  html {
-    font-size: 16px;
-  }
-
-  body {
-    overscroll-behavior-y: none;
-  }
+.send {
+  background: #111;
+  color: white;
+  border-radius: 10px;
+  padding: 10px;
 }
