@@ -9,12 +9,11 @@
 html,
 body {
   margin: 0;
-  padding: 0;
   min-height: 100%;
   background:
     radial-gradient(circle at top, rgba(99, 102, 241, 0.35), transparent 30%),
-    radial-gradient(circle at right, rgba(236, 72, 153, 0.22), transparent 25%),
-    linear-gradient(180deg, #050816 0%, #080b14 100%);
+    radial-gradient(circle at right, rgba(236, 72, 153, 0.18), transparent 25%),
+    linear-gradient(180deg, #050816 0%, #090d19 100%);
   color: #f8fafc;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -24,11 +23,6 @@ input,
 textarea,
 select {
   font: inherit;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
 }
 
 .page {
@@ -61,7 +55,7 @@ a {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.92);
   font-size: 13px;
 }
 
@@ -139,6 +133,22 @@ a {
   font-size: 18px;
 }
 
+.presetRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.presetChip {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
 .fieldGroup {
   display: grid;
   gap: 10px;
@@ -151,7 +161,6 @@ label {
 }
 
 textarea,
-input,
 select {
   width: 100%;
   border-radius: 18px;
@@ -163,7 +172,6 @@ select {
 }
 
 textarea:focus,
-input:focus,
 select:focus {
   border-color: rgba(129, 140, 248, 0.8);
   box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.16);
@@ -194,11 +202,6 @@ textarea {
   color: white;
   cursor: pointer;
   font-weight: 700;
-  transition: transform 0.12s ease, opacity 0.12s ease, box-shadow 0.12s ease;
-}
-
-.btn:hover {
-  transform: translateY(-1px);
 }
 
 .btnPrimary {
@@ -288,6 +291,30 @@ textarea {
   border: 1px solid rgba(129, 140, 248, 0.28);
 }
 
+.timeline {
+  position: relative;
+  margin: 2px 0 18px;
+  display: grid;
+  place-items: center;
+}
+
+.timelineLine {
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.timelineText {
+  position: relative;
+  z-index: 1;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.96);
+  color: rgba(226, 232, 240, 0.75);
+  font-size: 12px;
+}
+
 .messages {
   display: flex;
   flex-direction: column;
@@ -348,25 +375,8 @@ textarea {
   line-height: 1.5;
 }
 
-.meter {
-  display: grid;
-  gap: 8px;
-}
-
-.meterBar {
-  height: 10px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.09);
-}
-
-.meterFill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #22c55e, #f59e0b, #ef4444);
-}
-
 .captionBox {
+  margin-top: 16px;
   border-radius: 20px;
   padding: 14px;
   background: rgba(255, 255, 255, 0.06);
@@ -381,9 +391,21 @@ textarea {
   color: rgba(226, 232, 240, 0.58);
 }
 
-.credit {
-  margin-top: 14px;
-  color: rgba(226, 232, 240, 0.48);
-  font-size: 12px;
-  text-align: center;
+.meter {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+}
+
+.meterBar {
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22c55e, #f59e0b, #ef4444);
 }
