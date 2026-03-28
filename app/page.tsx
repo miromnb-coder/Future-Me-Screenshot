@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 
 type Role = "me" | "future me";
 type Mood = "calm" | "honest" | "direct" | "wise";
@@ -19,7 +19,7 @@ type PersistedState = {
   mood: Mood;
 };
 
-const STORAGE_KEY = "future-me-ui-v7";
+const STORAGE_KEY = "future-me-memory-v1";
 const MAX_MESSAGES = 50;
 
 const WELCOME_MESSAGE: Message = {
@@ -45,6 +45,10 @@ function formatClock() {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+function roleClass(role: Role) {
+  return role === "me" ? "me" : "future-me";
 }
 
 function looksFinnish(text: string) {
@@ -113,10 +117,6 @@ function fallbackReply(latestUserText: string, mood: Mood, lastAssistantText = "
   const source = isFinnish ? sets[mood].fi : sets[mood].en;
   const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
   return source[Math.abs(score) % source.length];
-}
-
-function roleClass(role: Role) {
-  return role === "me" ? "me" : "future-me";
 }
 
 function createStyles(mobile: boolean): Record<string, CSSProperties> {
@@ -327,8 +327,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     messageRow: {
       display: "flex",
-      width: "100%",
-      animation: "floatIn 220ms ease both"
+      width: "100%"
     },
     meRow: {
       justifyContent: "flex-end"
@@ -373,8 +372,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     typingRow: {
       display: "flex",
-      justifyContent: "flex-start",
-      animation: "floatIn 180ms ease both"
+      justifyContent: "flex-start"
     },
     typingBubble: {
       padding: "12px 14px",
@@ -490,17 +488,15 @@ export default function Page() {
   const [mood, setMood] = useState<Mood>("honest");
   const [loading, setLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [focusMode, setFocusMode] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   const streamRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const update = () => {
-      setMobile(window.innerWidth < 900);
-    };
+    const update = () => setMobile(window.innerWidth < 900);
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -625,8 +621,38 @@ export default function Page() {
     setMood("honest");
     setLoading(false);
     setMenuOpen(false);
-    setFocusMode(false);
     textareaRef.current?.focus();
+  }
+
+  async function saveScreenshot() {
+    if (!previewRef.current) return;
+
+    const html2canvas = (await import("html2canvas")).default;
+    const canvas = await html2canvas(previewRef.current, {
+      backgroundColor: null,
+      scale: 2
+    });
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((b) => resolve(b), "image/png");
+    });
+
+    if (!blob) return;
+
+    const file = new File([blob], `future-me-${Date.now()}.png`, { type: "image/png" });
+
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: "Future Me Screenshot"
+      });
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.download = file.name;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -721,21 +747,6 @@ export default function Page() {
           background: rgba(134, 163, 174, 0.16);
         }
 
-        .floatIn {
-          animation: floatIn 220ms ease both;
-        }
-
-        @keyframes floatIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px) scale(0.99);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
         @keyframes pulse {
           0%,
           100% {
@@ -745,18 +756,12 @@ export default function Page() {
             opacity: 1;
           }
         }
-
-        @media (max-width: 900px) {
-          .fmApp {
-            padding: 10px 10px 14px;
-          }
-        }
       `}</style>
 
-      {menuOpen && <div className="sheetBackdrop" style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
+      {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
 
       {menuOpen && (
-        <aside className="sheet" style={styles.sheet}>
+        <aside style={styles.sheet}>
           <div>
             <div style={styles.sheetTitle}>Future Me</div>
             <div style={styles.sheetSub}>Quick actions</div>
@@ -766,8 +771,14 @@ export default function Page() {
             <button style={styles.sheetButton} onClick={startOver}>
               Start over
             </button>
-            <button style={styles.sheetButton} onClick={() => setFocusMode((v) => !v)}>
-              {focusMode ? "Exit focus mode" : "Focus mode"}
+            <button
+              style={styles.sheetButton}
+              onClick={() => {
+                void saveScreenshot();
+                setMenuOpen(false);
+              }}
+            >
+              Share screenshot
             </button>
             <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
               Close
@@ -776,7 +787,7 @@ export default function Page() {
         </aside>
       )}
 
-      <div style={styles.shell} className="floatIn">
+      <div style={styles.shell}>
         <header style={styles.topBar}>
           <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
             ≡
@@ -794,13 +805,10 @@ export default function Page() {
 
         <div style={styles.statusRow}>
           <span style={styles.pill}>
-            <span style={{ width: 7, height: 7, borderRadius: 999, background: "#4caf7a", boxShadow: "none" }} />
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: "#4caf7a" }} />
             online
           </span>
           <span style={styles.pill}>remembers context</span>
-          <button style={styles.pillAction} type="button" onClick={() => setFocusMode((v) => !v)}>
-            {focusMode ? "Exit focus mode" : "Focus mode"}
-          </button>
         </div>
 
         <div style={styles.moodRow}>
@@ -816,7 +824,7 @@ export default function Page() {
           ))}
         </div>
 
-        <section style={styles.threadCard}>
+        <section ref={previewRef} style={styles.threadCard}>
           <div style={styles.threadHeader}>
             <div style={styles.threadLeft}>
               <div style={styles.avatar}>FM</div>
