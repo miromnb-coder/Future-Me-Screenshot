@@ -115,6 +115,10 @@ function fallbackReply(latestUserText: string, mood: Mood, lastAssistantText = "
   return source[Math.abs(score) % source.length];
 }
 
+function roleClass(role: Role) {
+  return role === "me" ? "me" : "future-me";
+}
+
 function createStyles(mobile: boolean): Record<string, CSSProperties> {
   return {
     page: {
@@ -310,6 +314,12 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       display: "flex",
       animation: "floatIn 220ms ease both"
     },
+    meRow: {
+      justifyContent: "flex-end"
+    },
+    futureRow: {
+      justifyContent: "flex-start"
+    },
     messageBubble: {
       maxWidth: mobile ? "86%" : "72%",
       padding: "14px 16px",
@@ -371,7 +381,6 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     composerTextarea: {
       flex: 1,
-      width: "100%",
       minHeight: 58,
       maxHeight: 180,
       resize: "none",
@@ -487,10 +496,7 @@ export default function Page() {
         if (typeof parsed.input === "string") {
           setInput(parsed.input);
         }
-        if (
-          parsed.mood &&
-          ["calm", "honest", "direct", "wise"].includes(parsed.mood)
-        ) {
+        if (parsed.mood && ["calm", "honest", "direct", "wise"].includes(parsed.mood)) {
           setMood(parsed.mood as Mood);
         }
       }
@@ -558,7 +564,8 @@ export default function Page() {
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const lastAssistant =
+        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
@@ -743,7 +750,7 @@ export default function Page() {
           gap: 12px;
           padding: 8px 2px 12px;
           backdrop-filter: blur(16px);
-          background: linear-gradient(180deg, rgba(244, 239, 231, 0.96), rgba(244, 239, 231, 0.78));
+          background: linear-gradient(180deg, rgba(244, 239, 231, 0.96), rgba(244, 239, 231, 0.80));
         }
 
         .actionButton {
@@ -947,6 +954,10 @@ export default function Page() {
           justify-content: flex-end;
         }
 
+        .messageRow.future-me {
+          justify-content: flex-start;
+        }
+
         .messageBubble {
           max-width: min(82%, 560px);
           padding: 14px 16px;
@@ -966,7 +977,7 @@ export default function Page() {
           border-top-right-radius: 26px;
         }
 
-        .messageBubble.future\\ me {
+        .messageBubble.future-me {
           background: rgba(16, 24, 38, 0.06);
           color: #101826;
           border-top-left-radius: 26px;
@@ -1225,7 +1236,10 @@ export default function Page() {
 
         <div className="statusRow">
           <span className="pill">
-            <span className="liveDot" style={{ width: 7, height: 7, boxShadow: "none", background: "#4caf7a" }} />
+            <span
+              className="liveDot"
+              style={{ width: 7, height: 7, boxShadow: "none", background: "#4caf7a" }}
+            />
             online
           </span>
           <span className="pill">remembers context</span>
@@ -1266,11 +1280,8 @@ export default function Page() {
           <div className="threadBody">
             <div className="stream">
               {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`messageRow ${message.role === "me" ? "me" : ""}`}
-                >
-                  <div className={`messageBubble ${message.role === "me" ? "me" : ""}`}>
+                <div key={message.id} className={`messageRow ${roleClass(message.role)}`}>
+                  <div className={`messageBubble ${roleClass(message.role)}`}>
                     {message.text}
                     <div className="timestamp">{message.time}</div>
                   </div>
