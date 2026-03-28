@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent } from "react";
+import type { KeyboardEvent, CSSProperties } from "react";
 
-type Role = "me" | "future-me";
+type Role = "me" | "future me";
 type Mood = "calm" | "honest" | "direct" | "wise";
 
 type Message = {
@@ -19,12 +19,12 @@ type PersistedState = {
   mood: Mood;
 };
 
-const STORAGE_KEY = "future-me-ui-v4";
+const STORAGE_KEY = "future-me-ui-v7";
 const MAX_MESSAGES = 50;
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
-  role: "future-me",
+  role: "future me",
   text: "Write one thought. I’ll keep the conversation going.",
   time: "now"
 };
@@ -122,7 +122,9 @@ function roleClass(role: Role) {
 function createStyles(mobile: boolean): Record<string, CSSProperties> {
   return {
     page: {
-      minHeight: "100vh",
+      height: "100dvh",
+      minHeight: "100dvh",
+      overflow: "hidden",
       padding: mobile ? 10 : 16,
       background:
         "radial-gradient(circle at top left, rgba(255,255,255,0.70), transparent 24%), radial-gradient(circle at top right, rgba(255,255,255,0.28), transparent 20%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
@@ -132,23 +134,24 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       overflowX: "hidden"
     },
     shell: {
+      height: "100%",
       maxWidth: 860,
       margin: "0 auto",
-      display: "grid",
+      display: "flex",
+      flexDirection: "column",
       gap: 12,
-      paddingBottom: 8
+      minHeight: 0
     },
     topBar: {
-      position: "sticky",
-      top: 0,
-      zIndex: 20,
+      flex: "0 0 auto",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
-      padding: "8px 2px 12px",
+      padding: "8px 2px 8px",
       backdropFilter: "blur(16px)",
-      background: "linear-gradient(180deg, rgba(244,239,231,0.96), rgba(244,239,231,0.80))"
+      background: "linear-gradient(180deg, rgba(244,239,231,0.96), rgba(244,239,231,0.80))",
+      borderRadius: 18
     },
     topTitle: {
       display: "flex",
@@ -180,6 +183,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       boxShadow: "0 12px 26px rgba(16,24,38,0.05)"
     },
     statusRow: {
+      flex: "0 0 auto",
       display: "flex",
       flexWrap: "wrap",
       gap: 8,
@@ -208,6 +212,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       fontWeight: 600
     },
     moodRow: {
+      flex: "0 0 auto",
       display: "flex",
       gap: 8,
       flexWrap: "wrap"
@@ -231,6 +236,10 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       fontWeight: 700
     },
     threadCard: {
+      flex: "1 1 auto",
+      minHeight: 0,
+      display: "flex",
+      flexDirection: "column",
       borderRadius: 30,
       background: "rgba(255,255,255,0.62)",
       border: "1px solid rgba(16,24,38,0.07)",
@@ -239,6 +248,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       backdropFilter: "blur(18px)"
     },
     threadHeader: {
+      flex: "0 0 auto",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
@@ -298,26 +308,32 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       boxShadow: "0 0 0 5px rgba(76,175,122,0.16)"
     },
     threadBody: {
-      padding: 16,
-      minHeight: mobile ? 520 : 640,
+      flex: "1 1 auto",
+      minHeight: 0,
       display: "flex",
       flexDirection: "column",
-      gap: 10
+      padding: 16
     },
     stream: {
+      flex: "1 1 auto",
+      minHeight: 0,
+      overflowY: "auto",
+      WebkitOverflowScrolling: "touch",
+      overscrollBehavior: "contain",
       display: "flex",
       flexDirection: "column",
       gap: 10,
-      flex: 1
+      paddingRight: 2
     },
     messageRow: {
       display: "flex",
+      width: "100%",
       animation: "floatIn 220ms ease both"
     },
     meRow: {
       justifyContent: "flex-end"
     },
-    futureRow: {
+    futureMeRow: {
       justifyContent: "flex-start"
     },
     messageBubble: {
@@ -328,6 +344,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       lineHeight: 1.6,
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
+      overflowWrap: "break-word",
       letterSpacing: "-0.005em",
       position: "relative",
       width: "fit-content"
@@ -336,12 +353,12 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       background: "linear-gradient(180deg, #101826, #141f2f)",
       color: "#f5efe6",
       boxShadow: "0 12px 24px rgba(16,24,38,0.12)",
-      borderTopRightRadius: 26,
       borderTopLeftRadius: 26,
+      borderTopRightRadius: 26,
       borderBottomLeftRadius: 26,
       borderBottomRightRadius: 16
     },
-    futureBubble: {
+    futureMeBubble: {
       background: "rgba(16,24,38,0.06)",
       color: "#101826",
       borderTopLeftRadius: 26,
@@ -369,9 +386,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       animation: "pulse 1.3s ease-in-out infinite"
     },
     composerShell: {
-      position: "sticky",
-      bottom: 14,
-      zIndex: 10,
+      flex: "0 0 auto",
       borderRadius: 28,
       background: "rgba(255,255,255,0.72)",
       border: "1px solid rgba(16,24,38,0.07)",
@@ -478,12 +493,14 @@ export default function Page() {
   const [focusMode, setFocusMode] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
-  const previewRef = useRef<HTMLDivElement | null>(null);
+  const streamRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const update = () => setMobile(window.innerWidth < 900);
+    const update = () => {
+      setMobile(window.innerWidth < 900);
+    };
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -509,7 +526,7 @@ export default function Page() {
         }
       }
     } catch {
-      // ignore broken storage
+      // ignore
     } finally {
       setHydrated(true);
     }
@@ -572,7 +589,7 @@ export default function Page() {
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant = [...messages].reverse().find((m) => m.role === "future-me")?.text ?? "";
+      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
@@ -580,7 +597,7 @@ export default function Page() {
 
       const assistantMessage: Message = {
         id: uid(),
-        role: "future-me",
+        role: "future me",
         text: replyText,
         time: formatClock()
       };
@@ -589,7 +606,7 @@ export default function Page() {
     } catch {
       const assistantMessage: Message = {
         id: uid(),
-        role: "future-me",
+        role: "future me",
         text: fallbackReply(trimmed, mood),
         time: formatClock()
       };
@@ -612,37 +629,6 @@ export default function Page() {
     textareaRef.current?.focus();
   }
 
-  async function saveScreenshot() {
-    if (!previewRef.current) return;
-
-    const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(previewRef.current, {
-      backgroundColor: null,
-      scale: 2
-    });
-
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob((b) => resolve(b), "image/png");
-    });
-
-    if (!blob) return;
-
-    const file = new File([blob], `future-me-${Date.now()}.png`, { type: "image/png" });
-
-    if (navigator.share && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: "Future Me Screenshot"
-      });
-      return;
-    }
-
-    const link = document.createElement("a");
-    link.download = file.name;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  }
-
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -651,7 +637,7 @@ export default function Page() {
   };
 
   return (
-    <main className={`fmApp ${focusMode ? "focusMode" : ""}`}>
+    <main style={styles.page}>
       <style jsx global>{`
         :root {
           color-scheme: light;
@@ -664,7 +650,8 @@ export default function Page() {
         html,
         body {
           margin: 0;
-          min-height: 100%;
+          width: 100%;
+          height: 100%;
           background:
             radial-gradient(circle at top left, rgba(255, 255, 255, 0.70), transparent 24%),
             radial-gradient(circle at top right, rgba(255, 255, 255, 0.28), transparent 20%),
@@ -676,7 +663,7 @@ export default function Page() {
         }
 
         body {
-          overflow-x: hidden;
+          overflow: hidden;
         }
 
         button,
@@ -700,9 +687,6 @@ export default function Page() {
 
         .fmApp {
           position: relative;
-          min-height: 100vh;
-          padding: 14px 14px 18px;
-          overflow: hidden;
         }
 
         .scene {
@@ -737,414 +721,8 @@ export default function Page() {
           background: rgba(134, 163, 174, 0.16);
         }
 
-        .frame {
-          position: relative;
-          z-index: 1;
-          max-width: 860px;
-          margin: 0 auto;
-          display: grid;
-          gap: 12px;
-          padding-bottom: 18px;
-        }
-
-        .topBar {
-          position: sticky;
-          top: 0;
-          z-index: 12;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 8px 2px 12px;
-          backdrop-filter: blur(16px);
-          background: linear-gradient(180deg, rgba(244, 239, 231, 0.96), rgba(244, 239, 231, 0.80));
-        }
-
-        .actionButton {
-          width: 42px;
-          height: 42px;
-          border-radius: 14px;
-          border: 1px solid rgba(16, 24, 38, 0.08);
-          background: rgba(255, 255, 255, 0.78);
-          color: #101826;
-          display: grid;
-          place-items: center;
-          cursor: pointer;
-          box-shadow: 0 12px 26px rgba(16, 24, 38, 0.05);
-          transition:
-            transform 180ms ease,
-            background 180ms ease,
-            box-shadow 180ms ease;
-        }
-
-        .actionButton:hover {
-          transform: translateY(-1px);
-          background: rgba(255, 255, 255, 0.88);
-          box-shadow: 0 16px 30px rgba(16, 24, 38, 0.08);
-        }
-
-        .brandBlock {
-          flex: 1;
-          text-align: center;
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-          align-items: center;
-        }
-
-        .brandTitle {
-          font-size: 18px;
-          font-weight: 800;
-          letter-spacing: -0.035em;
-        }
-
-        .brandSub {
-          font-size: 12px;
-          color: rgba(16, 24, 38, 0.56);
-          transition: opacity 180ms ease, transform 180ms ease;
-        }
-
-        .statusRow {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          align-items: center;
-        }
-
-        .pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 999px;
-          border: 1px solid rgba(16, 24, 38, 0.06);
-          background: rgba(255, 255, 255, 0.52);
-          color: rgba(16, 24, 38, 0.72);
-          font-size: 12px;
-          letter-spacing: 0.01em;
-          backdrop-filter: blur(12px);
-        }
-
-        .pillAction {
-          border: 1px solid rgba(16, 24, 38, 0.06);
-          background: rgba(255, 255, 255, 0.66);
-          color: #101826;
-          padding: 8px 12px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .moodRow {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .moodButton {
-          border: 1px solid rgba(16, 24, 38, 0.08);
-          background: rgba(255, 255, 255, 0.68);
-          color: #101826;
-          padding: 9px 13px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .moodButtonActive {
-          border: 1px solid rgba(16, 24, 38, 0.10);
-          background: #101826;
-          color: #f5efe6;
-          padding: 9px 13px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .threadCard {
-          border-radius: 30px;
-          background: rgba(255, 255, 255, 0.62);
-          border: 1px solid rgba(16, 24, 38, 0.07);
-          box-shadow: 0 22px 60px rgba(16, 24, 38, 0.08);
-          overflow: hidden;
-          backdrop-filter: blur(18px);
-        }
-
-        .threadHeader {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 16px;
-          border-bottom: 1px solid rgba(16, 24, 38, 0.06);
-          background: rgba(255, 255, 255, 0.34);
-          backdrop-filter: blur(10px);
-        }
-
-        .threadLeft {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .avatar {
-          width: 38px;
-          height: 38px;
-          border-radius: 999px;
-          background: linear-gradient(135deg, #101826, #1f2b3d);
-          color: #f5efe6;
-          display: grid;
-          place-items: center;
-          font-size: 14px;
-          font-weight: 800;
-          box-shadow: 0 10px 18px rgba(16, 24, 38, 0.14);
-        }
-
-        .threadText {
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
-
-        .threadName {
-          font-size: 16px;
-          font-weight: 800;
-          letter-spacing: -0.03em;
-        }
-
-        .threadMeta {
-          font-size: 12px;
-          color: rgba(16, 24, 38, 0.56);
-        }
-
-        .liveChip {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 12px;
-          border-radius: 999px;
-          background: rgba(16, 24, 38, 0.05);
-          border: 1px solid rgba(16, 24, 38, 0.06);
-          font-size: 12px;
-          color: rgba(16, 24, 38, 0.7);
-        }
-
-        .liveDot {
-          width: 8px;
-          height: 8px;
-          border-radius: 999px;
-          background: #4caf7a;
-          box-shadow: 0 0 0 5px rgba(76, 175, 122, 0.16);
-        }
-
-        .threadBody {
-          padding: 16px;
-          min-height: clamp(540px, 64vh, 760px);
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-
-        .stream {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          flex: 1;
-        }
-
-        .messageRow {
-          display: flex;
+        .floatIn {
           animation: floatIn 220ms ease both;
-        }
-
-        .messageRow.me {
-          justify-content: flex-end;
-        }
-
-        .messageRow.future-me {
-          justify-content: flex-start;
-        }
-
-        .messageBubble {
-          max-width: min(82%, 560px);
-          padding: 14px 16px;
-          border-radius: 26px;
-          font-size: 14px;
-          line-height: 1.6;
-          white-space: pre-wrap;
-          word-break: break-word;
-          letter-spacing: -0.005em;
-          position: relative;
-          width: fit-content;
-        }
-
-        .messageBubble.me {
-          background: linear-gradient(180deg, #101826, #141f2f);
-          color: #f5efe6;
-          box-shadow: 0 12px 24px rgba(16, 24, 38, 0.12);
-          border-top-right-radius: 26px;
-          border-top-left-radius: 26px;
-          border-bottom-left-radius: 26px;
-          border-bottom-right-radius: 16px;
-        }
-
-        .messageBubble.future-me {
-          background: rgba(16, 24, 38, 0.06);
-          color: #101826;
-          border-top-left-radius: 26px;
-          border-top-right-radius: 26px;
-          border-bottom-left-radius: 16px;
-          border-bottom-right-radius: 26px;
-        }
-
-        .timestamp {
-          margin-top: 6px;
-          font-size: 11px;
-          color: rgba(16, 24, 38, 0.52);
-        }
-
-        .typingRow {
-          display: flex;
-          justify-content: flex-start;
-          animation: floatIn 180ms ease both;
-        }
-
-        .typingBubble {
-          padding: 12px 14px;
-          border-radius: 26px;
-          background: rgba(16, 24, 38, 0.05);
-          color: rgba(16, 24, 38, 0.58);
-          font-size: 14px;
-          letter-spacing: 0.02em;
-          animation: pulse 1.3s ease-in-out infinite;
-        }
-
-        .composerShell {
-          position: sticky;
-          bottom: 14px;
-          z-index: 10;
-          border-radius: 28px;
-          background: rgba(255, 255, 255, 0.72);
-          border: 1px solid rgba(16, 24, 38, 0.07);
-          box-shadow: 0 20px 54px rgba(16, 24, 38, 0.08);
-          backdrop-filter: blur(18px);
-          overflow: hidden;
-        }
-
-        .composerRow {
-          display: flex;
-          gap: 10px;
-          align-items: flex-end;
-          padding: 14px;
-          flex-direction: row;
-        }
-
-        .composerTextarea {
-          flex: 1;
-          min-height: 58px;
-          max-height: 180px;
-          resize: none;
-          border-radius: 26px;
-          border: 1px solid rgba(16, 24, 38, 0.08);
-          background: rgba(255, 255, 255, 0.88);
-          color: #101826;
-          padding: 15px 14px;
-          line-height: 1.55;
-          font-size: 15px;
-          outline: none;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-          transition:
-            border-color 160ms ease,
-            box-shadow 160ms ease;
-        }
-
-        .composerTextarea:focus {
-          border-color: rgba(16, 24, 38, 0.16);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.72),
-            0 0 0 4px rgba(16, 24, 38, 0.06);
-        }
-
-        .sendButton {
-          min-width: 104px;
-          border: 0;
-          border-radius: 26px;
-          padding: 14px 16px;
-          background: linear-gradient(180deg, #101826, #1b2636);
-          color: #f5efe6;
-          font-weight: 700;
-          box-shadow: 0 12px 22px rgba(16, 24, 38, 0.16);
-        }
-
-        .helper {
-          padding: 0 16px 16px;
-          font-size: 12px;
-          color: rgba(16, 24, 38, 0.54);
-          line-height: 1.5;
-        }
-
-        .sheetBackdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(15, 23, 38, 0.24);
-          backdrop-filter: blur(4px);
-          z-index: 40;
-        }
-
-        .sheet {
-          position: fixed;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          z-index: 50;
-          background: rgba(255, 255, 255, 0.96);
-          border-top-left-radius: 24px;
-          border-top-right-radius: 24px;
-          border-top: 1px solid rgba(16, 24, 38, 0.08);
-          padding: 16px;
-          box-shadow: 0 -18px 50px rgba(16, 24, 38, 0.16);
-          display: grid;
-          gap: 12px;
-        }
-
-        .sheetTitle {
-          font-size: 18px;
-          font-weight: 800;
-          letter-spacing: -0.03em;
-        }
-
-        .sheetSub {
-          margin-top: 3px;
-          font-size: 12px;
-          color: rgba(16, 24, 38, 0.56);
-        }
-
-        .sheetGroup {
-          display: grid;
-          gap: 8px;
-        }
-
-        .sheetButton {
-          width: 100%;
-          text-align: left;
-          border-radius: 16px;
-          padding: 12px 14px;
-          border: 1px solid rgba(16, 24, 38, 0.08);
-          background: rgba(255, 255, 255, 0.88);
-          color: #101826;
-          font-weight: 600;
-        }
-
-        .focusMode .brandSub {
-          opacity: 0.3;
-        }
-
-        .focusMode .threadCard {
-          box-shadow: 0 18px 46px rgba(16, 24, 38, 0.06);
-        }
-
-        .focusMode .composerShell {
-          background: rgba(255, 255, 255, 0.8);
         }
 
         @keyframes floatIn {
@@ -1172,140 +750,113 @@ export default function Page() {
           .fmApp {
             padding: 10px 10px 14px;
           }
-
-          .frame {
-            gap: 12px;
-          }
-
-          .brandTitle {
-            font-size: 17px;
-          }
-
-          .threadBody {
-            min-height: 520px;
-          }
-
-          .composerRow {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .sendButton {
-            width: 100%;
-            min-width: 0;
-          }
-
-          .messageBubble {
-            max-width: 88%;
-          }
         }
       `}</style>
 
-      {menuOpen && <div className="sheetBackdrop" onClick={() => setMenuOpen(false)} />}
+      {menuOpen && <div className="sheetBackdrop" style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
 
       {menuOpen && (
-        <aside className="sheet">
+        <aside className="sheet" style={styles.sheet}>
           <div>
-            <div className="sheetTitle">Future Me</div>
-            <div className="sheetSub">Quick actions</div>
+            <div style={styles.sheetTitle}>Future Me</div>
+            <div style={styles.sheetSub}>Quick actions</div>
           </div>
 
-          <div className="sheetGroup">
-            <button className="sheetButton" onClick={startOver}>
+          <div style={styles.sheetGroup}>
+            <button style={styles.sheetButton} onClick={startOver}>
               Start over
             </button>
-            <button
-              className="sheetButton"
-              onClick={() => {
-                void saveScreenshot();
-                setMenuOpen(false);
-              }}
-            >
-              Save screenshot
-            </button>
-            <button className="sheetButton" onClick={() => setFocusMode((v) => !v)}>
+            <button style={styles.sheetButton} onClick={() => setFocusMode((v) => !v)}>
               {focusMode ? "Exit focus mode" : "Focus mode"}
             </button>
-            <button className="sheetButton" onClick={() => setMenuOpen(false)}>
+            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
               Close
             </button>
           </div>
         </aside>
       )}
 
-      <div className="frame">
-        <header className="topBar">
-          <button className="actionButton" aria-label="Menu" onClick={() => setMenuOpen(true)}>
+      <div style={styles.shell} className="floatIn">
+        <header style={styles.topBar}>
+          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
             ≡
           </button>
 
-          <div className="brandBlock">
-            <div className="brandTitle">Future Me</div>
-            <div className="brandSub">free-form chat · persistent context</div>
+          <div style={styles.topTitle}>
+            <div style={styles.brand}>Future Me</div>
+            <div style={styles.brandSub}>free-form chat · persistent context</div>
           </div>
 
-          <button className="actionButton" aria-label="Menu" onClick={() => setMenuOpen(true)}>
+          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
             ⋯
           </button>
         </header>
 
-        <div className="statusRow">
-          <span className="pill">
-            <span
-              className="liveDot"
-              style={{ width: 7, height: 7, boxShadow: "none", background: "#4caf7a" }}
-            />
+        <div style={styles.statusRow}>
+          <span style={styles.pill}>
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: "#4caf7a", boxShadow: "none" }} />
             online
           </span>
-          <span className="pill">remembers context</span>
-          <button className="pillAction" type="button" onClick={() => setFocusMode((v) => !v)}>
+          <span style={styles.pill}>remembers context</span>
+          <button style={styles.pillAction} type="button" onClick={() => setFocusMode((v) => !v)}>
             {focusMode ? "Exit focus mode" : "Focus mode"}
           </button>
         </div>
 
-        <div className="moodRow">
+        <div style={styles.moodRow}>
           {(Object.keys(moodLabels) as Mood[]).map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => setMood(item)}
-              className={item === mood ? "moodButtonActive" : "moodButton"}
+              style={item === mood ? styles.moodButtonActive : styles.moodButton}
             >
               {moodLabels[item]}
             </button>
           ))}
         </div>
 
-        <section ref={previewRef} className="threadCard">
-          <div className="threadHeader">
-            <div className="threadLeft">
-              <div className="avatar">FM</div>
-              <div className="threadText">
-                <div className="threadName">Future Me</div>
-                <div className="threadMeta">private chat · feels continuous</div>
+        <section style={styles.threadCard}>
+          <div style={styles.threadHeader}>
+            <div style={styles.threadLeft}>
+              <div style={styles.avatar}>FM</div>
+              <div style={styles.threadText}>
+                <div style={styles.threadName}>Future Me</div>
+                <div style={styles.threadMeta}>private chat · feels continuous</div>
               </div>
             </div>
 
-            <div className="liveChip">
-              <span className="liveDot" />
+            <div style={styles.liveChip}>
+              <span style={styles.liveDot} />
               {loading ? "typing..." : "ready"}
             </div>
           </div>
 
-          <div className="threadBody">
-            <div className="stream">
+          <div style={styles.threadBody}>
+            <div ref={streamRef} style={styles.stream}>
               {messages.map((message) => (
-                <div key={message.id} className={`messageRow ${roleClass(message.role)}`}>
-                  <div className={`messageBubble ${roleClass(message.role)}`}>
+                <div
+                  key={message.id}
+                  style={{
+                    ...styles.messageRow,
+                    ...(message.role === "me" ? styles.meRow : styles.futureMeRow)
+                  }}
+                >
+                  <div
+                    style={{
+                      ...styles.messageBubble,
+                      ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble)
+                    }}
+                  >
                     {message.text}
-                    <div className="timestamp">{message.time}</div>
+                    <div style={styles.timestamp}>{message.time}</div>
                   </div>
                 </div>
               ))}
 
               {loading && (
-                <div className="typingRow">
-                  <div className="typingBubble">typing…</div>
+                <div style={styles.typingRow}>
+                  <div style={styles.typingBubble}>typing…</div>
                 </div>
               )}
 
@@ -1314,11 +865,11 @@ export default function Page() {
           </div>
         </section>
 
-        <section className="composerShell">
-          <div className="composerRow">
+        <section style={styles.composerShell}>
+          <div style={styles.composerRow}>
             <textarea
               ref={textareaRef}
-              className="composerTextarea"
+              style={styles.composerTextarea}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1326,12 +877,12 @@ export default function Page() {
               rows={1}
             />
 
-            <button className="sendButton" onClick={() => void sendMessage()} disabled={loading}>
+            <button style={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
               {loading ? "Sending..." : "Send"}
             </button>
           </div>
 
-          <div className="helper">Press Enter to send · Shift+Enter for a new line</div>
+          <div style={styles.helper}>Press Enter to send · Shift+Enter for a new line</div>
         </section>
       </div>
     </main>
