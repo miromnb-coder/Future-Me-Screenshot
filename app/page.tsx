@@ -17,8 +17,8 @@ type PersistedState = {
   input: string;
 };
 
-const STORAGE_KEY = "future-me-free-chat-v1";
-const MAX_MESSAGES = 40;
+const STORAGE_KEY = "future-me-free-chat-v2";
+const MAX_MESSAGES = 50;
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
@@ -31,6 +31,13 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function formatClock() {
+  return new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 function looksFinnish(text: string) {
   const t = text.toLowerCase();
   return (
@@ -41,40 +48,10 @@ function looksFinnish(text: string) {
 
 function fallbackReply(latestUserText: string) {
   if (looksFinnish(latestUserText)) {
-    return "Et taida hakea vain vastausta. Haluat että päätös tuntuisi vähemmän raskaalta. Se on eri asia.";
+    return "Et taida hakea vain vastausta. Haluat että päätös tuntuisi vähemmän raskaalta. Se on se kohta, jota kannattaa katsoa.";
   }
 
   return "You are not really asking for information. You are asking for permission. That is usually the useful part to notice.";
-}
-
-function extractReply(raw: string) {
-  const trimmed = raw.trim();
-
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed.reply === "string") {
-      return parsed.reply.trim();
-    }
-  } catch {
-    // ignore
-  }
-
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-
-  if (start >= 0 && end > start) {
-    try {
-      const parsed = JSON.parse(trimmed.slice(start, end + 1));
-      if (parsed && typeof parsed.reply === "string") {
-        return parsed.reply.trim();
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const withoutFences = trimmed.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-  return withoutFences || null;
 }
 
 function createStyles(mobile: boolean): Record<string, CSSProperties> {
@@ -82,24 +59,30 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     page: {
       minHeight: "100vh",
       padding: mobile ? 12 : 18,
-      background:
-        "linear-gradient(180deg, #f5efe6 0%, #eee6da 100%)",
+      background: "linear-gradient(180deg, #f5efe6 0%, #eee6da 100%)",
       color: "#101826",
       fontFamily:
-        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      overflowX: "hidden"
     },
     shell: {
-      maxWidth: 780,
+      maxWidth: 820,
       margin: "0 auto",
       display: "grid",
-      gap: 14
+      gap: 14,
+      paddingBottom: 8
     },
     topBar: {
+      position: "sticky",
+      top: 0,
+      zIndex: 20,
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
-      padding: "2px 2px 6px"
+      padding: "8px 2px 12px",
+      backdropFilter: "blur(10px)",
+      background: "linear-gradient(180deg, rgba(245,239,230,0.96), rgba(245,239,230,0.82))"
     },
     topTitle: {
       display: "flex",
@@ -130,11 +113,6 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       cursor: "pointer",
       boxShadow: "0 12px 26px rgba(16,24,38,0.05)"
     },
-    hero: {
-      display: "grid",
-      gap: 8,
-      padding: "4px 0 2px"
-    },
     eyebrow: {
       display: "inline-flex",
       width: "fit-content",
@@ -145,23 +123,9 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       fontSize: 13,
       color: "rgba(16,24,38,0.72)"
     },
-    title: {
-      margin: 0,
-      fontSize: mobile ? "34px" : "clamp(40px, 5vw, 66px)",
-      lineHeight: 0.95,
-      letterSpacing: "-0.055em",
-      maxWidth: mobile ? 12 : 11
-    },
-    subtitle: {
-      margin: 0,
-      maxWidth: 680,
-      color: "rgba(16,24,38,0.68)",
-      fontSize: 17,
-      lineHeight: 1.6
-    },
     chatCard: {
       borderRadius: 28,
-      background: "rgba(255,255,255,0.66)",
+      background: "rgba(255,255,255,0.68)",
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 18px 50px rgba(16,24,38,0.08)",
       overflow: "hidden"
@@ -222,7 +186,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     },
     chatBody: {
       padding: mobile ? 14 : 16,
-      minHeight: mobile ? 520 : 600,
+      minHeight: mobile ? 520 : 620,
       display: "flex",
       flexDirection: "column",
       gap: 12
@@ -277,11 +241,8 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       borderTopLeftRadius: 8
     },
     composerCard: {
-      position: "sticky",
-      bottom: 12,
-      zIndex: 5,
       borderRadius: 28,
-      background: "rgba(255,255,255,0.74)",
+      background: "rgba(255,255,255,0.72)",
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 18px 50px rgba(16,24,38,0.06)",
       overflow: "hidden",
@@ -297,7 +258,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     textarea: {
       width: "100%",
       minHeight: 58,
-      maxHeight: 160,
+      maxHeight: 180,
       resize: "vertical",
       borderRadius: 18,
       border: "1px solid rgba(16,24,38,0.08)",
@@ -310,7 +271,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       flex: 1
     },
     sendButton: {
-      minWidth: mobile ? "100%" : 92,
+      minWidth: mobile ? "100%" : 100,
       border: "0",
       borderRadius: 16,
       padding: "13px 16px",
@@ -436,6 +397,10 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -461,7 +426,7 @@ export default function Page() {
       JSON.stringify({
         messages: messages.slice(-MAX_MESSAGES),
         input
-      } satisfies PersistedState)
+      })
     );
   }, [messages, input, hydrated]);
 
@@ -481,7 +446,7 @@ export default function Page() {
       id: uid(),
       role: "me",
       text: trimmed,
-      time: "now"
+      time: formatClock()
     };
 
     const nextMessages = [...messages, userMessage].slice(-MAX_MESSAGES);
@@ -510,7 +475,7 @@ export default function Page() {
         id: uid(),
         role: "future me",
         text: replyText,
-        time: "soon"
+        time: formatClock()
       };
 
       setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
@@ -519,7 +484,7 @@ export default function Page() {
         id: uid(),
         role: "future me",
         text: fallbackReply(trimmed),
-        time: "soon"
+        time: formatClock()
       };
 
       setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
@@ -530,10 +495,12 @@ export default function Page() {
   }
 
   function startOver() {
+    window.localStorage.removeItem(STORAGE_KEY);
     setMessages([WELCOME_MESSAGE]);
     setInput("");
     setLoading(false);
     setMenuOpen(false);
+    setProOpen(false);
     textareaRef.current?.focus();
   }
 
@@ -599,13 +566,7 @@ export default function Page() {
           </div>
 
           <div style={styles.sheetSection}>
-            <button
-              style={styles.sheetButton}
-              onClick={() => {
-                startOver();
-                setMenuOpen(false);
-              }}
-            >
+            <button style={styles.sheetButton} onClick={startOver}>
               Start over
             </button>
             <button
@@ -659,7 +620,7 @@ export default function Page() {
 
           <div style={styles.topTitle}>
             <div style={styles.brand}>Future Me</div>
-            <div style={styles.brandSub}>free conversation · persistent chat</div>
+            <div style={styles.brandSub}>free-form chat · persistent context</div>
           </div>
 
           <button style={styles.iconButton} aria-label="Upgrade" onClick={openUpgrade}>
@@ -667,13 +628,7 @@ export default function Page() {
           </button>
         </header>
 
-        <section style={styles.hero}>
-          <div style={styles.eyebrow}>Continue the conversation</div>
-          <h1 style={styles.title}>Talk to your future self.</h1>
-          <p style={styles.subtitle}>
-            A free-form chat that keeps the thread, remembers the history, and stays clean on mobile.
-          </p>
-        </section>
+        <div style={styles.eyebrow}>Continue the conversation</div>
 
         <section ref={previewRef} style={styles.chatCard}>
           <div style={styles.chatHeader}>
@@ -681,7 +636,7 @@ export default function Page() {
               <div style={styles.avatar}>FM</div>
               <div style={styles.chatNameWrap}>
                 <div style={styles.chatName}>Future Me</div>
-                <div style={styles.chatHint}>private chat · persistent</div>
+                <div style={styles.chatHint}>private chat · remembers context</div>
               </div>
             </div>
 
