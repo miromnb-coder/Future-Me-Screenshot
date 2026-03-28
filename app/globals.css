@@ -1,99 +1,27 @@
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: #0b0b0c;
+  color: #f5f5f7;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
 body {
-  margin: 0;
-  background: #f4efe7;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #111;
-}
-
-.app {
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 16px;
-}
-
-/* HEADER */
-.header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
 }
 
-.icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  border: 1px solid #ddd;
-  background: white;
+button, input {
+  font-family: inherit;
+  border: none;
+  outline: none;
 }
 
-.title {
-  text-align: center;
-}
-
-.logo {
-  font-weight: 700;
-}
-
-.subtitle {
-  font-size: 12px;
-  color: #777;
-}
-
-/* CHAT */
-.chat {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.bubble {
-  padding: 12px 14px;
-  border-radius: 16px;
-  max-width: 80%;
-}
-
-.me {
-  background: #111;
-  color: white;
-  align-self: flex-end;
-}
-
-.future {
-  background: #eae6de;
-}
-
-/* INPUT */
-.composer {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.controls {
-  display: flex;
-  gap: 8px;
-}
-
-select,
-textarea {
-  border-radius: 10px;
-  border: 1px solid #ddd;
-  padding: 10px;
-}
-
-textarea {
-  min-height: 80px;
-}
-
-.send {
-  background: #111;
-  color: white;
-  border-radius: 10px;
-  padding: 10px;
+button {
+  cursor: pointer;
+  background: none;
 }
