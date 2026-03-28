@@ -70,7 +70,7 @@ function pickFallback(latestUserText: string, lastAssistantText: string, mood: M
         "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota."
       ]
     }
-  };
+  } as const;
 
   const source = isFinnish ? variants[mood].fi : variants[mood].en;
   const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
