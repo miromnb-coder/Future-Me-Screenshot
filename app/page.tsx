@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 
-type Role = "me" | "future me";
+type Role = "me" | "future-me";
 type Mood = "calm" | "honest" | "direct" | "wise";
 
 type Message = {
@@ -24,7 +24,7 @@ const MAX_MESSAGES = 50;
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
-  role: "future me",
+  role: "future-me",
   text: "Write one thought. I’ll keep the conversation going.",
   time: "now"
 };
@@ -317,7 +317,7 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
     meRow: {
       justifyContent: "flex-end"
     },
-    futureMeRow: {
+    futureRow: {
       justifyContent: "flex-start"
     },
     messageBubble: {
@@ -330,19 +330,18 @@ function createStyles(mobile: boolean): Record<string, CSSProperties> {
       wordBreak: "break-word",
       letterSpacing: "-0.005em",
       position: "relative",
-      width: "fit-content",
-      overflowWrap: "break-word"
+      width: "fit-content"
     },
     meBubble: {
       background: "linear-gradient(180deg, #101826, #141f2f)",
       color: "#f5efe6",
       boxShadow: "0 12px 24px rgba(16,24,38,0.12)",
-      borderTopLeftRadius: 26,
       borderTopRightRadius: 26,
+      borderTopLeftRadius: 26,
       borderBottomLeftRadius: 26,
       borderBottomRightRadius: 16
     },
-    futureMeBubble: {
+    futureBubble: {
       background: "rgba(16,24,38,0.06)",
       color: "#101826",
       borderTopLeftRadius: 26,
@@ -573,7 +572,7 @@ export default function Page() {
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const lastAssistant = [...messages].reverse().find((m) => m.role === "future-me")?.text ?? "";
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
@@ -581,7 +580,7 @@ export default function Page() {
 
       const assistantMessage: Message = {
         id: uid(),
-        role: "future me",
+        role: "future-me",
         text: replyText,
         time: formatClock()
       };
@@ -590,7 +589,7 @@ export default function Page() {
     } catch {
       const assistantMessage: Message = {
         id: uid(),
-        role: "future me",
+        role: "future-me",
         text: fallbackReply(trimmed, mood),
         time: formatClock()
       };
@@ -977,15 +976,14 @@ export default function Page() {
           letter-spacing: -0.005em;
           position: relative;
           width: fit-content;
-          overflow-wrap: break-word;
         }
 
         .messageBubble.me {
           background: linear-gradient(180deg, #101826, #141f2f);
           color: #f5efe6;
           box-shadow: 0 12px 24px rgba(16, 24, 38, 0.12);
-          border-top-left-radius: 26px;
           border-top-right-radius: 26px;
+          border-top-left-radius: 26px;
           border-bottom-left-radius: 26px;
           border-bottom-right-radius: 16px;
         }
@@ -1055,7 +1053,9 @@ export default function Page() {
           font-size: 15px;
           outline: none;
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-          transition: border-color 160ms ease, box-shadow 160ms ease;
+          transition:
+            border-color 160ms ease,
+            box-shadow 160ms ease;
         }
 
         .composerTextarea:focus {
@@ -1295,11 +1295,8 @@ export default function Page() {
           <div className="threadBody">
             <div className="stream">
               {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`messageRow ${message.role === "me" ? "me" : "future-me"}`}
-                >
-                  <div className={`messageBubble ${message.role === "me" ? "me" : "future-me"}`}>
+                <div key={message.id} className={`messageRow ${roleClass(message.role)}`}>
+                  <div className={`messageBubble ${roleClass(message.role)}`}>
                     {message.text}
                     <div className="timestamp">{message.time}</div>
                   </div>
