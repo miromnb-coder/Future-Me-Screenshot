@@ -1,22 +1,32 @@
 import { NextResponse } from "next/server";
 
-type Tone = "calm" | "honest" | "direct" | "hopeful" | "chaotic";
-
 type Message = {
   from: "me" | "future me";
   text: string;
   time: string;
 };
 
-function fallback(decision: string, horizon: string): { messages: Message[]; caption: string } {
+function fallback(decision: string, horizon: string) {
   return {
     messages: [
       { from: "me", text: decision || "Should I do this?", time: "now" },
-      { from: "future me", text: "Pause first. Clarity usually arrives before regret.", time: "soon" },
-      { from: "me", text: "So what now?", time: "soon" },
-      { from: "future me", text: `Give it ${horizon || "2 weeks"}.`, time: horizon || "2 weeks" }
+      {
+        from: "future me",
+        text: "If you have to ask, you probably already know.",
+        time: "soon"
+      },
+      {
+        from: "me",
+        text: "Yeah…",
+        time: "soon"
+      },
+      {
+        from: "future me",
+        text: `Give it ${horizon || "2 weeks"}. Clarity comes when you're not chasing it.`,
+        time: horizon || "2 weeks"
+      }
     ],
-    caption: "A quieter kind of answer."
+    caption: "Clarity doesn’t shout."
   };
 }
 
@@ -28,6 +38,7 @@ export async function POST(request: Request) {
   const horizon = String(body.horizon ?? "2 weeks").trim();
 
   const apiKey = process.env.GROQ_API_KEY;
+
   if (!apiKey) {
     const fb = fallback(decision, horizon);
     return NextResponse.json({
@@ -39,17 +50,31 @@ export async function POST(request: Request) {
   }
 
   const systemPrompt = `
-You write short, intelligent, minimalist chat screenshots.
-Style:
-- calm, wise, concise
-- realistic future-self tone
-- 4 messages total max
-- no emojis unless tone is chaotic
-- no extra explanations
-- each line should feel like a real chat
-- the future self should sound insightful, not generic
+You are a future version of the user.
 
-Return ONLY valid JSON in this exact shape:
+Your job is NOT to be nice.
+Your job is to be accurate, observant, and slightly unsettling in a smart way.
+
+Style rules:
+- extremely concise (short messages)
+- sounds like a real private chat
+- avoid generic advice completely
+- no clichés (NO "follow your heart", "trust the process", etc.)
+- sometimes be brutally honest
+- sometimes be calm and wise
+- occasionally say less than expected (silence = power)
+- create a subtle emotional impact
+
+Structure:
+- 3–4 messages total
+- must feel like a real conversation, not AI text
+- the last message should feel like a realization
+
+Important:
+The future self KNOWS what happened.
+Hint at consequences without overexplaining.
+
+Return ONLY valid JSON:
 {
   "title": "Future Me",
   "horizon": string,
@@ -67,8 +92,9 @@ Decision: ${decision || "Should I do this?"}
 Tone: ${tone}
 Time jump: ${horizon}
 
-Make the future self noticeably wiser than the current self.
-Keep it minimal, elegant, and shareable.
+Make it feel real, slightly uncomfortable, and insightful.
+Avoid obvious answers.
+Make it something people would screenshot and share.
 `;
 
   try {
@@ -84,41 +110,8 @@ Keep it minimal, elegant, and shareable.
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        temperature: 0.8,
-        max_tokens: 500,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "future_me_screenshot",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                title: { type: "string" },
-                horizon: { type: "string" },
-                tone: { type: "string" },
-                caption: { type: "string" },
-                messages: {
-                  type: "array",
-                  minItems: 2,
-                  maxItems: 4,
-                  items: {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: {
-                      from: { type: "string", enum: ["me", "future me"] },
-                      text: { type: "string" },
-                      time: { type: "string" }
-                    },
-                    required: ["from", "text", "time"]
-                  }
-                }
-              },
-              required: ["title", "horizon", "tone", "messages", "caption"]
-            }
-          }
-        }
+        temperature: 0.9,
+        max_tokens: 400
       })
     });
 
@@ -135,13 +128,27 @@ Keep it minimal, elegant, and shareable.
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content ?? "";
 
-    const parsed = JSON.parse(content);
+    let parsed;
+
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      const fb = fallback(decision, horizon);
+      return NextResponse.json({
+        title: "Future Me",
+        horizon,
+        tone,
+        ...fb
+      });
+    }
 
     return NextResponse.json({
       title: parsed.title ?? "Future Me",
       horizon: parsed.horizon ?? horizon,
       tone: parsed.tone ?? tone,
-      messages: Array.isArray(parsed.messages) ? parsed.messages : fallback(decision, horizon).messages,
+      messages: Array.isArray(parsed.messages)
+        ? parsed.messages
+        : fallback(decision, horizon).messages,
       caption: parsed.caption ?? fallback(decision, horizon).caption
     });
   } catch {
