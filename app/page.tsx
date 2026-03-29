@@ -35,6 +35,7 @@ type MessageRow = {
 };
 
 const STORAGE_KEY = "future-me-v6";
+const MEMORY_SUMMARY_KEY = "future-me-memory-summary";
 const FREE_LIMIT = 5;
 const MAX_MESSAGES = 50;
 const MIN_REPLY_DELAY_MS = 850;
@@ -198,14 +199,25 @@ function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean, lastA
   return pool[Math.abs(score) % pool.length];
 }
 
-function buildMemory(messages: Message[], mood: Mood) {
+function buildMemory(messages: Message[], mood: Mood, memorySummary = "") {
   const recentUserMessages = messages
     .filter((m) => m.role === "me")
     .slice(-4)
     .map((m) => m.text)
     .join(" | ");
 
-  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}`.slice(0, 240);
+  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`.slice(0, 240);
+}
+
+function buildMemorySummary(messages: Message[]) {
+  const userTexts = messages
+    .filter((m) => m.role === "me")
+    .slice(-6)
+    .map((m) => m.text.trim())
+    .filter(Boolean)
+    .join(" • ");
+
+  return userTexts.slice(0, 240);
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -216,6 +228,7 @@ const supabase: SupabaseClient | null =
 
 function readDraft(key: string): PersistedState | null {
   if (typeof window === "undefined") return null;
+
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
@@ -371,6 +384,33 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       borderRadius: 999,
       fontSize: 12,
       fontWeight: 700
+    },
+    memoryCard: {
+      borderRadius: 24,
+      padding: 16,
+      background: "rgba(16,24,38,0.05)",
+      border: "1px solid rgba(16,24,38,0.06)",
+      display: "grid",
+      gap: 8
+    },
+    memoryTitle: {
+      fontSize: 13,
+      fontWeight: 800,
+      letterSpacing: "-0.02em"
+    },
+    memoryText: {
+      fontSize: 13,
+      lineHeight: 1.5,
+      color: "rgba(16,24,38,0.72)"
+    },
+    memoryButton: {
+      border: 0,
+      borderRadius: 16,
+      padding: "10px 14px",
+      background: "#101826",
+      color: "#f5efe6",
+      fontWeight: 700,
+      width: "fit-content"
     },
     threadCard: {
       flex: "1 1 auto",
@@ -778,6 +818,7 @@ export default function Page() {
   const [user, setUser] = useState<User | null>(null);
   const [emailCooldownUntil, setEmailCooldownUntilState] = useState(0);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [memorySummary, setMemorySummary] = useState("");
 
   const threadRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -833,6 +874,9 @@ export default function Page() {
       const lastEmail = window.localStorage.getItem("future-me-email");
       if (lastEmail) setEmailInput(lastEmail);
 
+      const savedMemory = window.localStorage.getItem(MEMORY_SUMMARY_KEY) || "";
+      if (savedMemory) setMemorySummary(savedMemory);
+
       const params = new URLSearchParams(window.location.search);
       if (params.get("pro") === "1" || params.get("pro") === "true") {
         setIsPro(true);
@@ -857,6 +901,16 @@ export default function Page() {
       usage
     });
   }, [messages, input, mood, isPro, usage, hydrated, activeDraftKey]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const summary = buildMemorySummary(messages);
+    if (!summary) return;
+
+    setMemorySummary(summary);
+    window.localStorage.setItem(MEMORY_SUMMARY_KEY, summary);
+  }, [messages, hydrated]);
 
   useEffect(() => {
     if (user?.email) {
@@ -983,6 +1037,12 @@ export default function Page() {
     setSendingEmail(false);
   }
 
+  function continueFromYesterday() {
+    if (!memorySummary) return;
+    setInput((prev) => prev || `Continuing from yesterday: ${memorySummary}. `);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
   async function insertMessage(userId: string, role: Role, text: string) {
     if (!supabase) return;
 
@@ -1021,7 +1081,7 @@ export default function Page() {
     if (!isPro) incrementUsage();
 
     const startedAt = Date.now();
-    const memory = buildMemory(nextMessages, mood);
+    const memory = buildMemory(nextMessages, mood, memorySummary);
 
     try {
       const response = await fetch("/api/generate", {
@@ -1088,6 +1148,8 @@ export default function Page() {
 
   function startOver() {
     window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(MEMORY_SUMMARY_KEY);
+    setMemorySummary("");
     setMessages([WELCOME_MESSAGE]);
     setInput("");
     setMood("honest");
@@ -1358,6 +1420,16 @@ export default function Page() {
             </button>
           )}
         </div>
+
+        {memorySummary ? (
+          <div style={styles.memoryCard}>
+            <div style={styles.memoryTitle}>Picked up from last time</div>
+            <div style={styles.memoryText}>{memorySummary}</div>
+            <button style={styles.memoryButton} onClick={continueFromYesterday}>
+              Continue from yesterday
+            </button>
+          </div>
+        ) : null}
 
         <div style={styles.moodRow}>
           {(Object.keys(moodLabels) as Mood[]).map((item) => (
