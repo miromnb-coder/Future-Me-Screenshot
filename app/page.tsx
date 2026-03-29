@@ -19,6 +19,7 @@ type PersistedState = {
   input: string;
   mood: Mood;
   isPro: boolean;
+  usage: Usage;
 };
 
 type Usage = {
@@ -252,689 +253,6 @@ async function loadDbMessages(client: SupabaseClient, userId: string): Promise<M
       minute: "2-digit"
     })
   }));
-}
-
-export default function Page() {
-  const [mobile, setMobile] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
-  const [input, setInput] = useState("");
-  const [mood, setMood] = useState<Mood>("honest");
-  const [loading, setLoading] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [paywallOpen, setPaywallOpen] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
-  const [isPro, setIsPro] = useState(false);
-  const [usage, setUsage] = useState<Usage>(defaultUsage());
-
-  const [showSaveSheet, setShowSaveSheet] = useState(false);
-  const [emailInput, setEmailInput] = useState("");
-  const [loginStatus, setLoginStatus] = useState("");
-  const [user, setUser] = useState<User | null>(null);
-
-  const streamRef = useRef<HTMLDivElement | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const bottomRef = useRef<HTMLDivElement | null>(null);
-  const previewRef = useRef<HTMLDivElement | null>(null);
-
-  const remainingToday =
-    usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
-
-  const activeDraftKey = useMemo(() => {
-    return user?.email ? `future-me:${user.email.trim().toLowerCase()}` : STORAGE_KEY;
-  }, [user?.email]);
-
-  useEffect(() => {
-    const update = () => setMobile(window.innerWidth < 900);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<PersistedState>;
-        if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
-          setMessages(parsed.messages.slice(-MAX_MESSAGES));
-        }
-        if (typeof parsed.input === "string") {
-          setInput(parsed.input);
-        }
-        if (parsed.mood && ["calm", "honest", "direct", "wise"].includes(parsed.mood)) {
-          setMood(parsed.mood as Mood);
-        }
-        if (typeof parsed.isPro === "boolean") {
-          setIsPro(parsed.isPro);
-        }
-        if (parsed && typeof parsed === "object" && "usage" in parsed) {
-          setUsage(normalizeUsage((parsed as { usage?: unknown }).usage));
-        }
-      }
-
-      const lastEmail = window.localStorage.getItem("future-me-email");
-      if (lastEmail) setEmailInput(lastEmail);
-
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("pro") === "1" || params.get("pro") === "true") {
-        setIsPro(true);
-        params.delete("pro");
-        const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
-        window.history.replaceState({}, "", nextUrl);
-      }
-    } catch {
-      // ignore broken storage
-    } finally {
-      setHydrated(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        messages: messages.slice(-MAX_MESSAGES),
-        input,
-        mood,
-        isPro,
-        usage
-      } satisfies PersistedState)
-    );
-  }, [messages, input, mood, isPro, usage, hydrated]);
-
-  useEffect(() => {
-    if (user?.email) {
-      window.localStorage.setItem("future-me-email", user.email);
-    }
-  }, [user?.email]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, loading]);
-
-  useEffect(() => {
-    if (!threadRef.current) return;
-    threadRef.current.scrollTop = threadRef.current.scrollHeight;
-  }, [messages, loading]);
-
-  useEffect(() => {
-    document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [menuOpen, paywallOpen, showSaveSheet]);
-
-  useEffect(() => {
-    if (!supabase) return;
-
-    const hydrateAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      const sessionUser = data.session?.user ?? null;
-      setUser(sessionUser);
-
-      if (sessionUser?.email) {
-        setEmailInput(sessionUser.email);
-        window.localStorage.setItem("future-me-email", sessionUser.email);
-
-        const emailDraft = readDraft(`future-me:${sessionUser.email.trim().toLowerCase()}`);
-        if (emailDraft) {
-          if (Array.isArray(emailDraft.messages) && emailDraft.messages.length > 0) {
-            setMessages(emailDraft.messages);
-          }
-          if (typeof emailDraft.input === "string") setInput(emailDraft.input);
-          if (emailDraft.mood && ["calm", "honest", "direct", "wise"].includes(emailDraft.mood)) {
-            setMood(emailDraft.mood as Mood);
-          }
-          if (typeof emailDraft.isPro === "boolean") setIsPro(emailDraft.isPro);
-        }
-
-        const dbMessages = await loadDbMessages(supabase, sessionUser.id);
-        if (dbMessages && dbMessages.length > 0) {
-          setMessages(dbMessages.slice(-MAX_MESSAGES));
-        }
-      }
-    };
-
-    void hydrateAuth();
-
-    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const sessionUser = session?.user ?? null;
-      setUser(sessionUser);
-
-      if (!sessionUser?.email) return;
-
-      window.localStorage.setItem("future-me-email", sessionUser.email);
-      setEmailInput(sessionUser.email);
-
-      const emailDraft = readDraft(`future-me:${sessionUser.email.trim().toLowerCase()}`);
-      if (emailDraft?.messages?.length) {
-        setMessages(emailDraft.messages.slice(-MAX_MESSAGES));
-      }
-
-      const dbMessages = await loadDbMessages(supabase, sessionUser.id);
-      if (dbMessages && dbMessages.length > 0) {
-        setMessages(dbMessages.slice(-MAX_MESSAGES));
-      }
-    });
-
-    return () => subscription.subscription.unsubscribe();
-  }, []);
-
-  const styles = useMemo(() => createStyles(mobile, isPro), [mobile, isPro]);
-
-  function incrementUsage() {
-    const today = todayKey();
-    const nextUsage =
-      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
-    setUsage(nextUsage);
-    return nextUsage;
-  }
-
-  async function signInWithEmail() {
-    if (!supabase) {
-      setLoginStatus("Supabase env vars are missing.");
-      return;
-    }
-
-    const email = emailInput.trim().toLowerCase();
-    if (!email) return;
-
-    setLoginStatus("Sending magic link...");
-
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`
-      }
-    });
-
-    if (error) {
-      setLoginStatus(error.message);
-      return;
-    }
-
-    setLoginStatus("Check your email for the sign-in link.");
-  }
-
-  async function insertMessage(userId: string, role: Role, text: string) {
-    if (!supabase) return;
-
-    const { error } = await supabase.from("messages").insert({
-      user_id: userId,
-      role,
-      text
-    });
-
-    if (error) console.error(error);
-  }
-
-  async function sendMessage() {
-    if (loading) return;
-
-    const trimmed = input.trim();
-    if (!trimmed) return;
-
-    if (!isPro && remainingToday <= 0) {
-      setPaywallOpen(true);
-      return;
-    }
-
-    const userMessage: Message = {
-      id: uid(),
-      role: "me",
-      text: trimmed,
-      time: formatClock()
-    };
-
-    const nextMessages = [...messages, userMessage].slice(-MAX_MESSAGES);
-    setMessages(nextMessages);
-    setInput("");
-    setLoading(true);
-
-    if (!isPro) incrementUsage();
-
-    const startedAt = Date.now();
-    const memory = buildMemory(nextMessages, mood);
-
-    try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: nextMessages,
-          mood,
-          isPro,
-          memory
-        })
-      });
-
-      const data = await response.json().catch(() => ({}));
-      const lastAssistant =
-        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
-      const replyText =
-        typeof data?.reply === "string" && data.reply.trim()
-          ? data.reply.trim()
-          : fallbackReply(trimmed, mood, isPro, lastAssistant);
-
-      const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
-      if (remaining > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remaining));
-      }
-
-      const assistantMessage: Message = {
-        id: uid(),
-        role: "future me",
-        text: replyText,
-        time: formatClock()
-      };
-
-      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
-
-      if (user?.id) {
-        await insertMessage(user.id, "me", trimmed);
-        await insertMessage(user.id, "future me", replyText);
-      }
-    } catch {
-      const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
-      if (remaining > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remaining));
-      }
-
-      const replyText = fallbackReply(trimmed, mood, isPro);
-      const assistantMessage: Message = {
-        id: uid(),
-        role: "future me",
-        text: replyText,
-        time: formatClock()
-      };
-
-      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
-
-      if (user?.id) {
-        await insertMessage(user.id, "me", trimmed);
-        await insertMessage(user.id, "future me", replyText);
-      }
-    } finally {
-      setLoading(false);
-      setTimeout(() => textareaRef.current?.focus(), 0);
-    }
-  }
-
-  function startOver() {
-    window.localStorage.removeItem(STORAGE_KEY);
-    setMessages([WELCOME_MESSAGE]);
-    setInput("");
-    setMood("honest");
-    setLoading(false);
-    setMenuOpen(false);
-    setPaywallOpen(false);
-    setShowSaveSheet(false);
-    setIsPro(false);
-    setUsage(defaultUsage());
-    textareaRef.current?.focus();
-  }
-
-  async function shareConversation() {
-    const transcript = messages
-      .map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`)
-      .join("\n\n");
-
-    try {
-      if (previewRef.current) {
-        const html2canvas = (await import("html2canvas")).default;
-        const canvas = await html2canvas(previewRef.current, {
-          backgroundColor: null,
-          scale: 2
-        });
-
-        const blob = await new Promise<Blob | null>((resolve) => {
-          canvas.toBlob((b) => resolve(b), "image/png");
-        });
-
-        if (blob) {
-          const file = new File([blob], "future-me.png", { type: "image/png" });
-          if (navigator.share && navigator.canShare?.({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: "Future Me"
-            });
-            return;
-          }
-        }
-      }
-    } catch {
-      // fall back
-    }
-
-    try {
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(transcript);
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  function openUpgrade() {
-    setMenuOpen(false);
-    setPaywallOpen(true);
-  }
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void sendMessage();
-    }
-  };
-
-  return (
-    <main style={styles.page}>
-      <style jsx global>{`
-        :root {
-          color-scheme: light;
-        }
-
-        * {
-          box-sizing: border-box;
-        }
-
-        html,
-        body {
-          margin: 0;
-          width: 100%;
-          height: 100%;
-          background:
-            radial-gradient(circle at top left, rgba(255, 255, 255, 0.70), transparent 24%),
-            radial-gradient(circle at top right, rgba(255, 255, 255, 0.28), transparent 20%),
-            linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
-          color: #101826;
-          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          -webkit-font-smoothing: antialiased;
-          -moz-osx-font-smoothing: grayscale;
-        }
-
-        body {
-          overflow: hidden;
-        }
-
-        button,
-        textarea {
-          font: inherit;
-        }
-
-        button {
-          cursor: pointer;
-          -webkit-tap-highlight-color: transparent;
-        }
-
-        textarea {
-          outline: none;
-        }
-
-        ::selection {
-          background: rgba(16, 24, 38, 0.14);
-          color: #101826;
-        }
-
-        @keyframes floatIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px) scale(0.99);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        @keyframes pulse {
-          0%,
-          100% {
-            opacity: 0.45;
-          }
-          50% {
-            opacity: 1;
-          }
-        }
-      `}</style>
-
-      {showSaveSheet && <div style={styles.sheetBackdrop} onClick={() => setShowSaveSheet(false)} />}
-      {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
-      {paywallOpen && <div style={styles.paywallBackdrop} onClick={() => setPaywallOpen(false)} />}
-
-      {showSaveSheet && (
-        <aside style={styles.sheet}>
-          <div>
-            <div style={styles.sheetTitle}>Save with email</div>
-            <div style={styles.sheetSub}>
-              Enter your email to send yourself a magic link and save this conversation.
-            </div>
-          </div>
-
-          <input
-            style={styles.sheetInput}
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            placeholder="you@email.com"
-            value={emailInput}
-            onChange={(e) => setEmailInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void signInWithEmail();
-              }
-            }}
-          />
-
-          <button style={styles.sheetPrimary} onClick={() => void signInWithEmail()}>
-            Send magic link
-          </button>
-
-          <button style={styles.sheetSecondary} onClick={() => setShowSaveSheet(false)}>
-            Close
-          </button>
-
-          {loginStatus ? <div style={styles.sheetHint}>{loginStatus}</div> : null}
-        </aside>
-      )}
-
-      {menuOpen && (
-        <aside style={styles.sheet}>
-          <div>
-            <div style={styles.sheetTitle}>Future Me</div>
-            <div style={styles.sheetSub}>Quick actions</div>
-          </div>
-
-          <div style={styles.sheetGroup}>
-            <button style={styles.sheetButton} onClick={startOver}>
-              Start over
-            </button>
-            <button style={styles.sheetButton} onClick={shareConversation}>
-              Share conversation
-            </button>
-            <button style={styles.sheetButton} onClick={openUpgrade}>
-              Upgrade to Pro
-            </button>
-            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
-              Close
-            </button>
-          </div>
-        </aside>
-      )}
-
-      {paywallOpen && (
-        <aside style={styles.paywall}>
-          <div style={styles.paywallHeader}>
-            <div style={styles.paywallTitle}>Future Me Pro</div>
-            <div style={styles.paywallSub}>
-              More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your
-              story.
-            </div>
-          </div>
-
-          <div style={styles.freeTag}>{isPro ? "Pro active" : `Free: ${remainingToday} left today`}</div>
-
-          <div style={styles.featureCard}>
-            <div style={styles.paywallSub}>What changes in Pro</div>
-            <div style={styles.featureList}>
-              <div style={styles.featureItem}>
-                <span style={styles.featureDot} />
-                Longer memory and fewer generic replies.
-              </div>
-              <div style={styles.featureItem}>
-                <span style={styles.featureDot} />
-                Mood modes that actually change the tone.
-              </div>
-              <div style={styles.featureItem}>
-                <span style={styles.featureDot} />
-                Unlimited messages and longer conversations.
-              </div>
-              <div style={styles.featureItem}>
-                <span style={styles.featureDot} />
-                Better sharing and a more personal feel.
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.paywallButtons}>
-            <button style={styles.proButton} onClick={() => setIsPro(true)}>
-              Unlock demo Pro
-            </button>
-            <button style={styles.ghostButton} onClick={shareConversation}>
-              Share conversation
-            </button>
-            <button style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>
-              Not now
-            </button>
-          </div>
-
-          <div style={styles.hintLine}>
-            After you add real checkout, redirect back with <code>?pro=1</code> and the app will unlock automatically.
-          </div>
-        </aside>
-      )}
-
-      <div style={styles.shell}>
-        <header style={styles.topBar}>
-          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
-            ≡
-          </button>
-
-          <div style={styles.topTitle}>
-            <div style={styles.brand}>Future Me</div>
-            <div style={styles.brandSub}>free-form chat · persistent context</div>
-          </div>
-
-          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
-            ⋯
-          </button>
-        </header>
-
-        <div style={styles.statusRow}>
-          <span style={styles.pill}>
-            <span style={{ width: 7, height: 7, borderRadius: 999, background: isPro ? "#4caf7a" : "#8d6b3d" }} />
-            {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
-          </span>
-          <span style={styles.pill}>remembers context</span>
-          {!user ? (
-            <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
-              Save with email
-            </button>
-          ) : (
-            <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>
-              Account
-            </button>
-          )}
-        </div>
-
-        <div style={styles.moodRow}>
-          {(Object.keys(moodLabels) as Mood[]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setMood(item)}
-              style={item === mood ? styles.moodButtonActive : styles.moodButton}
-            >
-              {moodLabels[item]}
-            </button>
-          ))}
-        </div>
-
-        <section ref={previewRef} style={styles.threadCard}>
-          <div style={styles.threadHeader}>
-            <div style={styles.threadLeft}>
-              <div style={styles.avatar}>FM</div>
-              <div style={styles.threadText}>
-                <div style={styles.threadName}>Future Me</div>
-                <div style={styles.threadMeta}>private chat · persistent memory</div>
-              </div>
-            </div>
-
-            <div style={styles.liveChip}>
-              <span style={styles.liveDot} />
-              {loading ? "typing..." : "ready"}
-            </div>
-          </div>
-
-          <div ref={threadRef} style={styles.threadBody}>
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                style={{
-                  display: "flex",
-                  justifyContent: message.role === "me" ? "flex-end" : "flex-start",
-                  width: "100%",
-                  animation: "floatIn 220ms ease both"
-                }}
-              >
-                <div
-                  style={{
-                    ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble),
-                    maxWidth: "82%"
-                  }}
-                >
-                  <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{message.text}</div>
-                  <div style={styles.timestamp}>{message.time}</div>
-                </div>
-              </div>
-            ))}
-
-            {loading ? <div style={styles.typingRow}><div style={styles.typingBubble}>typing…</div></div> : null}
-            <div ref={bottomRef} />
-          </div>
-        </section>
-
-        <section style={styles.composerShell}>
-          <div style={styles.composerRow}>
-            <textarea
-              ref={textareaRef}
-              style={styles.composerTextarea}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Write anything..."
-              rows={1}
-            />
-
-            <button style={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
-              {loading ? "Sending..." : "Send"}
-            </button>
-          </div>
-
-          <div style={styles.helper}>
-            Press Enter to send · Shift+Enter for a new line ·{" "}
-            {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
-          </div>
-        </section>
-      </div>
-    </main>
-  );
 }
 
 function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProperties> {
@@ -1401,4 +719,664 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       width: "fit-content"
     }
   };
+}
+
+export default function Page() {
+  const [mobile, setMobile] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+  const [input, setInput] = useState("");
+  const [mood, setMood] = useState<Mood>("honest");
+  const [loading, setLoading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [showSaveSheet, setShowSaveSheet] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [loginStatus, setLoginStatus] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+  const [isPro, setIsPro] = useState(false);
+  const [usage, setUsage] = useState<Usage>(defaultUsage());
+  const [user, setUser] = useState<User | null>(null);
+
+  const threadRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  const remainingToday =
+    usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
+
+  const activeDraftKey = useMemo(() => {
+    return user?.email ? `future-me:${user.email.trim().toLowerCase()}` : STORAGE_KEY;
+  }, [user?.email]);
+
+  useEffect(() => {
+    const update = () => setMobile(window.innerWidth < 900);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<PersistedState>;
+        if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+          setMessages(parsed.messages.slice(-MAX_MESSAGES));
+        }
+        if (typeof parsed.input === "string") setInput(parsed.input);
+        if (parsed.mood && ["calm", "honest", "direct", "wise"].includes(parsed.mood)) {
+          setMood(parsed.mood as Mood);
+        }
+        if (typeof parsed.isPro === "boolean") setIsPro(parsed.isPro);
+        if (parsed.usage) setUsage(normalizeUsage(parsed.usage));
+      }
+
+      const lastEmail = window.localStorage.getItem("future-me-email");
+      if (lastEmail) setEmailInput(lastEmail);
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("pro") === "1" || params.get("pro") === "true") {
+        setIsPro(true);
+        params.delete("pro");
+        const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+        window.history.replaceState({}, "", nextUrl);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    writeDraft(activeDraftKey, {
+      messages: messages.slice(-MAX_MESSAGES),
+      input,
+      mood,
+      isPro,
+      usage
+    });
+  }, [messages, input, mood, isPro, usage, hydrated, activeDraftKey]);
+
+  useEffect(() => {
+    if (user?.email) {
+      window.localStorage.setItem("future-me-email", user.email);
+    }
+  }, [user?.email]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading]);
+
+  useEffect(() => {
+    if (!threadRef.current) return;
+    threadRef.current.scrollTop = threadRef.current.scrollHeight;
+  }, [messages, loading]);
+
+  useEffect(() => {
+    document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [menuOpen, paywallOpen, showSaveSheet]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const hydrateAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      const sessionUser = data.session?.user ?? null;
+      setUser(sessionUser);
+
+      if (sessionUser?.email) {
+        setEmailInput(sessionUser.email);
+        window.localStorage.setItem("future-me-email", sessionUser.email);
+
+        const emailDraft = readDraft(`future-me:${sessionUser.email.trim().toLowerCase()}`);
+        if (emailDraft) {
+          if (Array.isArray(emailDraft.messages) && emailDraft.messages.length > 0) {
+            setMessages(emailDraft.messages.slice(-MAX_MESSAGES));
+          }
+          if (typeof emailDraft.input === "string") setInput(emailDraft.input);
+          if (emailDraft.mood && ["calm", "honest", "direct", "wise"].includes(emailDraft.mood)) {
+            setMood(emailDraft.mood as Mood);
+          }
+          if (typeof emailDraft.isPro === "boolean") setIsPro(emailDraft.isPro);
+        }
+
+        const dbMessages = await loadDbMessages(supabase, sessionUser.id);
+        if (dbMessages && dbMessages.length > 0) {
+          setMessages(dbMessages.slice(-MAX_MESSAGES));
+        }
+      }
+    };
+
+    void hydrateAuth();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const sessionUser = session?.user ?? null;
+      setUser(sessionUser);
+
+      if (!sessionUser?.email) return;
+
+      window.localStorage.setItem("future-me-email", sessionUser.email);
+      setEmailInput(sessionUser.email);
+
+      const emailDraft = readDraft(`future-me:${sessionUser.email.trim().toLowerCase()}`);
+      if (emailDraft?.messages?.length) {
+        setMessages(emailDraft.messages.slice(-MAX_MESSAGES));
+      }
+
+      const dbMessages = await loadDbMessages(supabase, sessionUser.id);
+      if (dbMessages && dbMessages.length > 0) {
+        setMessages(dbMessages.slice(-MAX_MESSAGES));
+      }
+    });
+
+    return () => subscription.subscription.unsubscribe();
+  }, []);
+
+  const styles = useMemo(() => createStyles(mobile, isPro), [mobile, isPro]);
+
+  function incrementUsage() {
+    const today = todayKey();
+    const nextUsage =
+      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
+    setUsage(nextUsage);
+    return nextUsage;
+  }
+
+  async function signInWithEmail() {
+    if (!supabase) {
+      setLoginStatus("Supabase env vars are missing.");
+      return;
+    }
+
+    const email = emailInput.trim().toLowerCase();
+    if (!email) return;
+
+    setLoginStatus("Sending magic link...");
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`
+      }
+    });
+
+    if (error) {
+      setLoginStatus(error.message);
+      return;
+    }
+
+    setLoginStatus("Check your email for the sign-in link.");
+  }
+
+  async function insertMessage(userId: string, role: Role, text: string) {
+    if (!supabase) return;
+
+    const { error } = await supabase.from("messages").insert({
+      user_id: userId,
+      role,
+      text
+    });
+
+    if (error) console.error(error);
+  }
+
+  async function sendMessage() {
+    if (loading) return;
+
+    const trimmed = input.trim();
+    if (!trimmed) return;
+
+    if (!isPro && remainingToday <= 0) {
+      setPaywallOpen(true);
+      return;
+    }
+
+    const userMessage: Message = {
+      id: uid(),
+      role: "me",
+      text: trimmed,
+      time: formatClock()
+    };
+
+    const nextMessages = [...messages, userMessage].slice(-MAX_MESSAGES);
+    setMessages(nextMessages);
+    setInput("");
+    setLoading(true);
+
+    if (!isPro) incrementUsage();
+
+    const startedAt = Date.now();
+    const memory = buildMemory(nextMessages, mood);
+
+    try {
+      const response = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: nextMessages,
+          mood,
+          isPro,
+          memory
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      const lastAssistant =
+        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const replyText =
+        typeof data?.reply === "string" && data.reply.trim()
+          ? data.reply.trim()
+          : fallbackReply(trimmed, mood, isPro, lastAssistant);
+
+      const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+
+      const assistantMessage: Message = {
+        id: uid(),
+        role: "future me",
+        text: replyText,
+        time: formatClock()
+      };
+
+      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
+
+      if (user?.id) {
+        await insertMessage(user.id, "me", trimmed);
+        await insertMessage(user.id, "future me", replyText);
+      }
+    } catch {
+      const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+
+      const replyText = fallbackReply(trimmed, mood, isPro);
+      const assistantMessage: Message = {
+        id: uid(),
+        role: "future me",
+        text: replyText,
+        time: formatClock()
+      };
+
+      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
+
+      if (user?.id) {
+        await insertMessage(user.id, "me", trimmed);
+        await insertMessage(user.id, "future me", replyText);
+      }
+    } finally {
+      setLoading(false);
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    }
+  }
+
+  function startOver() {
+    window.localStorage.removeItem(STORAGE_KEY);
+    setMessages([WELCOME_MESSAGE]);
+    setInput("");
+    setMood("honest");
+    setLoading(false);
+    setMenuOpen(false);
+    setPaywallOpen(false);
+    setShowSaveSheet(false);
+    setIsPro(false);
+    setUsage(defaultUsage());
+    textareaRef.current?.focus();
+  }
+
+  async function shareConversation() {
+    const transcript = messages
+      .map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`)
+      .join("\n\n");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Future Me",
+          text: transcript
+        });
+        return;
+      }
+
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(transcript);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  function openUpgrade() {
+    setMenuOpen(false);
+    setPaywallOpen(true);
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
+    }
+  };
+
+  return (
+    <main style={styles.page}>
+      <style jsx global>{`
+        :root {
+          color-scheme: light;
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        html,
+        body {
+          margin: 0;
+          width: 100%;
+          height: 100%;
+          background:
+            radial-gradient(circle at top left, rgba(255, 255, 255, 0.70), transparent 24%),
+            radial-gradient(circle at top right, rgba(255, 255, 255, 0.28), transparent 20%),
+            linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
+          color: #101826;
+          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+          overflow: hidden;
+        }
+
+        button,
+        textarea {
+          font: inherit;
+        }
+
+        button {
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        textarea {
+          outline: none;
+        }
+
+        ::selection {
+          background: rgba(16, 24, 38, 0.14);
+          color: #101826;
+        }
+
+        @keyframes floatIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.99);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes pulse {
+          0%,
+          100% {
+            opacity: 0.45;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+      `}</style>
+
+      {showSaveSheet && <div style={styles.sheetBackdrop} onClick={() => setShowSaveSheet(false)} />}
+      {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
+      {paywallOpen && <div style={styles.paywallBackdrop} onClick={() => setPaywallOpen(false)} />}
+
+      {showSaveSheet && (
+        <aside style={styles.sheet}>
+          <div>
+            <div style={styles.sheetTitle}>Save with email</div>
+            <div style={styles.sheetSub}>
+              Enter your email to send yourself a magic link and save this conversation.
+            </div>
+          </div>
+
+          <input
+            style={styles.sheetInput}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="you@email.com"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void signInWithEmail();
+              }
+            }}
+          />
+
+          <button style={styles.sheetPrimary} onClick={() => void signInWithEmail()}>
+            Send magic link
+          </button>
+
+          <button style={styles.sheetSecondary} onClick={() => setShowSaveSheet(false)}>
+            Close
+          </button>
+
+          {loginStatus ? <div style={styles.sheetHint}>{loginStatus}</div> : null}
+        </aside>
+      )}
+
+      {menuOpen && (
+        <aside style={styles.sheet}>
+          <div>
+            <div style={styles.sheetTitle}>Future Me</div>
+            <div style={styles.sheetSub}>Quick actions</div>
+          </div>
+
+          <div style={styles.sheetGroup}>
+            <button style={styles.sheetButton} onClick={startOver}>
+              Start over
+            </button>
+            <button style={styles.sheetButton} onClick={shareConversation}>
+              Share conversation
+            </button>
+            <button style={styles.sheetButton} onClick={openUpgrade}>
+              Upgrade to Pro
+            </button>
+            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
+              Close
+            </button>
+          </div>
+        </aside>
+      )}
+
+      {paywallOpen && (
+        <aside style={styles.paywall}>
+          <div style={styles.paywallHeader}>
+            <div style={styles.paywallTitle}>Future Me Pro</div>
+            <div style={styles.paywallSub}>
+              More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your
+              story.
+            </div>
+          </div>
+
+          <div style={styles.freeTag}>{isPro ? "Pro active" : `Free: ${remainingToday} left today`}</div>
+
+          <div style={styles.featureCard}>
+            <div style={styles.paywallSub}>What changes in Pro</div>
+            <div style={styles.featureList}>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Longer memory and fewer generic replies.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Mood modes that actually change the tone.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Unlimited messages and longer conversations.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Better sharing and a more personal feel.
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.paywallButtons}>
+            <button style={styles.proButton} onClick={() => setIsPro(true)}>
+              Unlock demo Pro
+            </button>
+            <button style={styles.ghostButton} onClick={shareConversation}>
+              Share conversation
+            </button>
+            <button style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>
+              Not now
+            </button>
+          </div>
+
+          <div style={styles.hintLine}>
+            After you add real checkout, redirect back with <code>?pro=1</code> and the app will unlock automatically.
+          </div>
+        </aside>
+      )}
+
+      <div style={styles.shell}>
+        <header style={styles.topBar}>
+          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
+            ≡
+          </button>
+
+          <div style={styles.topTitle}>
+            <div style={styles.brand}>Future Me</div>
+            <div style={styles.brandSub}>free-form chat · persistent context</div>
+          </div>
+
+          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
+            ⋯
+          </button>
+        </header>
+
+        <div style={styles.statusRow}>
+          <span style={styles.pill}>
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: isPro ? "#4caf7a" : "#8d6b3d" }} />
+            {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
+          </span>
+          <span style={styles.pill}>remembers context</span>
+          {!user ? (
+            <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
+              Save with email
+            </button>
+          ) : (
+            <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>
+              Account
+            </button>
+          )}
+        </div>
+
+        <div style={styles.moodRow}>
+          {(Object.keys(moodLabels) as Mood[]).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setMood(item)}
+              style={item === mood ? styles.moodButtonActive : styles.moodButton}
+            >
+              {moodLabels[item]}
+            </button>
+          ))}
+        </div>
+
+        <section style={styles.threadCard}>
+          <div style={styles.threadHeader}>
+            <div style={styles.threadLeft}>
+              <div style={styles.avatar}>FM</div>
+              <div style={styles.threadText}>
+                <div style={styles.threadName}>Future Me</div>
+                <div style={styles.threadMeta}>private chat · persistent memory</div>
+              </div>
+            </div>
+
+            <div style={styles.liveChip}>
+              <span style={styles.liveDot} />
+              {loading ? "typing..." : "ready"}
+            </div>
+          </div>
+
+          <div ref={threadRef} style={styles.threadBody}>
+            <div style={styles.stream}>
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  style={{
+                    display: "flex",
+                    width: "100%",
+                    justifyContent: message.role === "me" ? "flex-end" : "flex-start",
+                    animation: "floatIn 220ms ease both"
+                  }}
+                >
+                  <div
+                    style={{
+                      ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble),
+                      maxWidth: "82%"
+                    }}
+                  >
+                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{message.text}</div>
+                    <div style={styles.timestamp}>{message.time}</div>
+                  </div>
+                </div>
+              ))}
+
+              {loading ? (
+                <div style={styles.typingRow}>
+                  <div style={styles.typingBubble}>typing…</div>
+                </div>
+              ) : null}
+
+              <div ref={bottomRef} />
+            </div>
+          </div>
+        </section>
+
+        <section style={styles.composerShell}>
+          <div style={styles.composerRow}>
+            <textarea
+              ref={textareaRef}
+              style={styles.composerTextarea}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Write anything..."
+              rows={1}
+            />
+
+            <button style={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
+              {loading ? "Sending..." : "Send"}
+            </button>
+          </div>
+
+          <div style={styles.helper}>
+            Press Enter to send · Shift+Enter for a new line ·{" "}
+            {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
 }
