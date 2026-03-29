@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { createClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  type SupabaseClient,
+  type User
+} from "@supabase/supabase-js";
 
 type Role = "me" | "future me";
 type Mood = "calm" | "honest" | "direct" | "wise";
@@ -18,11 +22,6 @@ type PersistedConversation = {
   messages: Message[];
   input: string;
   mood: Mood;
-};
-
-type AuthUser = {
-  id: string;
-  email?: string | null;
 };
 
 type MessageRow = {
@@ -46,6 +45,9 @@ const welcomeMessage: Message = {
   time: "now"
 };
 
+const GUEST_KEY = "future-me:guest";
+const LAST_EMAIL_KEY = "future-me-email";
+
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -59,6 +61,10 @@ function formatClock() {
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
+}
+
+function draftKey(email?: string | null) {
+  return email ? `future-me:${normalizeEmail(email)}` : GUEST_KEY;
 }
 
 function looksFinnish(text: string) {
@@ -139,19 +145,64 @@ function buildMemory(messages: Message[], mood: Mood) {
   return `Mood: ${mood}. Recent user messages: ${recentUserMessages}`.slice(0, 240);
 }
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-);
+const hasSupabaseEnv =
+  Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+  Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
 
-function providerRedirect() {
-  return `${window.location.origin}/`;
+const supabase: SupabaseClient | null = hasSupabaseEnv
+  ? createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+    )
+  : null;
+
+function readDraft(key: string): PersistedConversation | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedConversation;
+    if (!parsed || !Array.isArray(parsed.messages)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(key: string, value: PersistedConversation) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+async function loadDbMessages(client: SupabaseClient, userId: string): Promise<Message[] | null> {
+  const { data, error } = await client
+    .from("messages")
+    .select("id, role, text, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    return null;
+  }
+
+  const rows = (data ?? []) as MessageRow[];
+  return rows.map((m) => ({
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    time: new Date(m.created_at).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit"
+    })
+  }));
 }
 
 export default function Page() {
   const [ready, setReady] = useState(false);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
 
+  const [showSaveSheet, setShowSaveSheet] = useState(false);
   const [emailInput, setEmailInput] = useState("");
   const [loginStatus, setLoginStatus] = useState("");
 
@@ -163,49 +214,78 @@ export default function Page() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
-  const draftKey = useMemo(() => {
-    const email = normalizeEmail(user?.email ?? emailInput);
-    return `future-me:${email || "guest"}`;
-  }, [user?.email, emailInput]);
+  const activeDraftKey = useMemo(() => draftKey(user?.email ?? null), [user?.email]);
 
   useEffect(() => {
-    const savedEmail = window.localStorage.getItem("future-me-email") || "";
-    if (savedEmail) {
-      setEmailInput(savedEmail);
+    const lastEmail = typeof window !== "undefined" ? window.localStorage.getItem(LAST_EMAIL_KEY) : "";
+    if (lastEmail) setEmailInput(lastEmail);
 
-      const savedRaw = window.localStorage.getItem(`future-me:${normalizeEmail(savedEmail)}`);
-      if (savedRaw) {
-        try {
-          const parsed = JSON.parse(savedRaw) as PersistedConversation;
-          if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
-            setMessages(parsed.messages);
-          }
-          if (typeof parsed.input === "string") {
-            setInput(parsed.input);
-          }
-          if (parsed.mood && ["calm", "honest", "direct", "wise"].includes(parsed.mood)) {
-            setMood(parsed.mood);
-          }
-        } catch {
-          setMessages([welcomeMessage]);
-        }
+    const guestDraft = readDraft(GUEST_KEY);
+    if (guestDraft) {
+      if (Array.isArray(guestDraft.messages) && guestDraft.messages.length > 0) setMessages(guestDraft.messages);
+      if (typeof guestDraft.input === "string") setInput(guestDraft.input);
+      if (guestDraft.mood && ["calm", "honest", "direct", "wise"].includes(guestDraft.mood)) {
+        setMood(guestDraft.mood);
       }
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      const sessionUser = data.session?.user;
-      if (sessionUser) {
-        setUser({ id: sessionUser.id, email: sessionUser.email });
-      }
+    if (!supabase) {
       setReady(true);
-    });
+      return;
+    }
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      const sessionUser = session?.user;
-      if (sessionUser) {
-        setUser({ id: sessionUser.id, email: sessionUser.email });
-      } else {
-        setUser(null);
+    const hydrate = async () => {
+      const { data } = await supabase.auth.getSession();
+      const sessionUser = data.session?.user ?? null;
+      setUser(sessionUser);
+
+      if (sessionUser?.email) {
+        setEmailInput(sessionUser.email);
+        window.localStorage.setItem(LAST_EMAIL_KEY, sessionUser.email);
+
+        const emailDraft = readDraft(draftKey(sessionUser.email));
+        if (emailDraft) {
+          if (Array.isArray(emailDraft.messages) && emailDraft.messages.length > 0) setMessages(emailDraft.messages);
+          if (typeof emailDraft.input === "string") setInput(emailDraft.input);
+          if (emailDraft.mood && ["calm", "honest", "direct", "wise"].includes(emailDraft.mood)) {
+            setMood(emailDraft.mood);
+          }
+        }
+
+        const dbMessages = await loadDbMessages(supabase, sessionUser.id);
+        if (dbMessages && dbMessages.length > 0) {
+          setMessages(dbMessages);
+        }
+      }
+
+      setReady(true);
+    };
+
+    void hydrate();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const sessionUser = session?.user ?? null;
+      setUser(sessionUser);
+
+      if (!sessionUser?.email) {
+        const guest = readDraft(GUEST_KEY);
+        if (guest?.messages?.length) setMessages(guest.messages);
+        if (typeof guest?.input === "string") setInput(guest.input);
+        if (guest?.mood && ["calm", "honest", "direct", "wise"].includes(guest.mood)) setMood(guest.mood);
+        return;
+      }
+
+      window.localStorage.setItem(LAST_EMAIL_KEY, sessionUser.email);
+      setEmailInput(sessionUser.email);
+
+      const emailDraft = readDraft(draftKey(sessionUser.email));
+      if (emailDraft?.messages?.length) {
+        setMessages(emailDraft.messages);
+      }
+
+      const dbMessages = await loadDbMessages(supabase, sessionUser.id);
+      if (dbMessages && dbMessages.length > 0) {
+        setMessages(dbMessages);
       }
     });
 
@@ -213,17 +293,17 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-
     const payload: PersistedConversation = {
       messages,
       input,
       mood
     };
+    writeDraft(activeDraftKey, payload);
 
-    window.localStorage.setItem(draftKey, JSON.stringify(payload));
-    window.localStorage.setItem("future-me-email", user.email ?? "");
-  }, [messages, input, mood, user, draftKey]);
+    if (user?.email) {
+      window.localStorage.setItem(LAST_EMAIL_KEY, user.email);
+    }
+  }, [messages, input, mood, user, activeDraftKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -234,37 +314,12 @@ export default function Page() {
     threadRef.current.scrollTop = threadRef.current.scrollHeight;
   }, [messages, loading]);
 
-  async function loadMessagesForUser(userId: string) {
-    const { data, error } = await supabase
-      .from("messages")
-      .select("id, role, text, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error(error);
+  async function signInWithEmail() {
+    if (!supabase) {
+      setLoginStatus("Supabase env vars are missing.");
       return;
     }
 
-    const loaded = (data ?? []).map((m: MessageRow) => ({
-      id: m.id,
-      role: m.role,
-      text: m.text,
-      time: new Date(m.created_at).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit"
-      })
-    }));
-
-    setMessages(loaded.length > 0 ? loaded : [welcomeMessage]);
-  }
-
-  useEffect(() => {
-    if (!user) return;
-    void loadMessagesForUser(user.id);
-  }, [user]);
-
-  async function signInWithEmail() {
     const email = normalizeEmail(emailInput);
     if (!email) return;
 
@@ -273,7 +328,7 @@ export default function Page() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: providerRedirect()
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`
       }
     });
 
@@ -285,32 +340,20 @@ export default function Page() {
     setLoginStatus("Check your email for the sign-in link.");
   }
 
-  async function signInWithGoogle() {
-    setLoginStatus("Opening Google login...");
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: providerRedirect()
-      }
-    });
-
-    if (error) {
-      setLoginStatus(error.message);
-    }
-  }
-
   async function signOut() {
-    await supabase.auth.signOut();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
-    setMessages([welcomeMessage]);
-    setInput("");
-    setMood("honest");
+    setMessages(readDraft(GUEST_KEY)?.messages?.length ? readDraft(GUEST_KEY)!.messages : [welcomeMessage]);
+    setInput(readDraft(GUEST_KEY)?.input ?? "");
+    setMood(readDraft(GUEST_KEY)?.mood ?? "honest");
+    setShowSaveSheet(false);
     setLoginStatus("");
-    window.localStorage.removeItem("future-me-email");
   }
 
   async function insertMessage(userId: string, role: Role, text: string) {
+    if (!supabase) return;
     const { error } = await supabase.from("messages").insert({
       user_id: userId,
       role,
@@ -323,7 +366,7 @@ export default function Page() {
   }
 
   async function sendMessage() {
-    if (!user || loading) return;
+    if (loading) return;
 
     const trimmed = input.trim();
     if (!trimmed) return;
@@ -376,8 +419,10 @@ export default function Page() {
 
       setMessages((prev) => [...prev, assistantMessage].slice(-50));
 
-      await insertMessage(user.id, "me", trimmed);
-      await insertMessage(user.id, "future me", replyText);
+      if (user?.id) {
+        await insertMessage(user.id, "me", trimmed);
+        await insertMessage(user.id, "future me", replyText);
+      }
     } catch {
       const remaining = Math.max(0, 850 - (Date.now() - startedAt));
       if (remaining > 0) {
@@ -394,8 +439,10 @@ export default function Page() {
 
       setMessages((prev) => [...prev, assistantMessage].slice(-50));
 
-      await insertMessage(user.id, "me", trimmed);
-      await insertMessage(user.id, "future me", replyText);
+      if (user?.id) {
+        await insertMessage(user.id, "me", trimmed);
+        await insertMessage(user.id, "future me", replyText);
+      }
     } finally {
       setLoading(false);
       setTimeout(() => {
@@ -418,84 +465,6 @@ export default function Page() {
         <section style={loginCard}>
           <div style={loginTitle}>Future Me</div>
           <div style={loginSub}>Loading...</div>
-        </section>
-      </main>
-    );
-  }
-
-  if (!user) {
-    return (
-      <main style={loginPage}>
-        <style jsx global>{`
-          :root {
-            color-scheme: light;
-          }
-
-          * {
-            box-sizing: border-box;
-          }
-
-          html,
-          body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
-            color: #101826;
-            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-          }
-
-          body {
-            overflow: hidden;
-          }
-
-          button,
-          textarea,
-          input {
-            font: inherit;
-          }
-
-          button {
-            cursor: pointer;
-            -webkit-tap-highlight-color: transparent;
-          }
-
-          input {
-            outline: none;
-          }
-        `}</style>
-
-        <section style={loginCard}>
-          <div style={loginTitle}>Future Me</div>
-          <div style={loginSub}>Choose how you want to enter.</div>
-
-          <input
-            style={loginInput}
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            placeholder="you@email.com"
-            value={emailInput}
-            onChange={(e) => setEmailInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                void signInWithEmail();
-              }
-            }}
-          />
-
-          <button style={loginButton} onClick={() => void signInWithEmail()}>
-            Continue with email
-          </button>
-
-          <button style={googleButton} onClick={() => void signInWithGoogle()}>
-            Continue with Google
-          </button>
-
-          {loginStatus ? <div style={loginHint}>{loginStatus}</div> : null}
         </section>
       </main>
     );
@@ -572,19 +541,70 @@ export default function Page() {
         }
       `}</style>
 
+      {showSaveSheet && <div style={sheetBackdrop} onClick={() => setShowSaveSheet(false)} />}
+
+      {showSaveSheet && (
+        <aside style={sheet}>
+          <div style={sheetTitle}>Save with email</div>
+          <div style={sheetSub}>
+            Keep using guest mode if you want. Enter email here to save this chat to your account.
+          </div>
+
+          <input
+            style={sheetInput}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="you@email.com"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void signInWithEmail();
+              }
+            }}
+          />
+
+          <button style={sheetPrimary} onClick={() => void signInWithEmail()}>
+            Send magic link
+          </button>
+
+          <button style={sheetSecondary} onClick={() => setShowSaveSheet(false)}>
+            Close
+          </button>
+
+          {loginStatus ? <div style={sheetHint}>{loginStatus}</div> : null}
+        </aside>
+      )}
+
       <div style={shell}>
         <header style={header}>
           <div style={brandBlock}>
             <div style={brand}>Future Me</div>
-            <div style={subtitle}>signed in as {user.email}</div>
+            <div style={subtitle}>
+              {user?.email ? `saved as ${user.email}` : "guest mode · save with email from inside"}
+            </div>
           </div>
 
           <div style={headerActions}>
-            <button style={secondaryButton} onClick={() => void signOut()}>
-              Log out
-            </button>
+            {!user ? (
+              <button style={secondaryButton} onClick={() => setShowSaveSheet(true)}>
+                Save with email
+              </button>
+            ) : (
+              <button style={secondaryButton} onClick={() => void signOut()}>
+                Log out
+              </button>
+            )}
           </div>
         </header>
+
+        {!user ? (
+          <div style={guestBanner}>
+            Guest mode is on. You can chat now, and save this conversation later with email.
+          </div>
+        ) : null}
 
         <div style={moodRow}>
           {(Object.keys(moodLabels) as Mood[]).map((item) => (
@@ -627,17 +647,10 @@ export default function Page() {
                 }}
               >
                 <div
-                  style={
-                    message.role === "me"
-                      ? {
-                          ...myBubble,
-                          maxWidth: "82%"
-                        }
-                      : {
-                          ...aiBubble,
-                          maxWidth: "82%"
-                        }
-                  }
+                  style={{
+                    ...(message.role === "me" ? myBubble : aiBubble),
+                    maxWidth: "82%"
+                  }}
                 >
                   <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{message.text}</div>
                   <div style={timeStyle}>{message.time}</div>
@@ -702,37 +715,6 @@ const loginSub: CSSProperties = {
   color: "rgba(16,24,38,0.58)"
 };
 
-const loginInput: CSSProperties = {
-  borderRadius: 18,
-  border: "1px solid rgba(16,24,38,0.08)",
-  padding: "14px 14px",
-  background: "rgba(255,255,255,0.92)",
-  fontSize: 15
-};
-
-const loginButton: CSSProperties = {
-  border: 0,
-  borderRadius: 18,
-  padding: "14px 16px",
-  background: "#101826",
-  color: "#f5efe6",
-  fontWeight: 800
-};
-
-const googleButton: CSSProperties = {
-  border: "1px solid rgba(16,24,38,0.10)",
-  borderRadius: 18,
-  padding: "14px 16px",
-  background: "rgba(255,255,255,0.92)",
-  color: "#101826",
-  fontWeight: 800
-};
-
-const loginHint: CSSProperties = {
-  fontSize: 12,
-  color: "rgba(16,24,38,0.52)"
-};
-
 const page: CSSProperties = {
   minHeight: "100vh",
   padding: 16,
@@ -788,6 +770,16 @@ const secondaryButton: CSSProperties = {
   borderRadius: 16,
   padding: "12px 14px",
   background: "rgba(255,255,255,0.78)"
+};
+
+const guestBanner: CSSProperties = {
+  borderRadius: 18,
+  padding: "12px 14px",
+  background: "rgba(255,255,255,0.62)",
+  border: "1px solid rgba(16,24,38,0.08)",
+  color: "rgba(16,24,38,0.72)",
+  fontSize: 13,
+  lineHeight: 1.5
 };
 
 const moodRow: CSSProperties = {
@@ -951,4 +943,72 @@ const sendButton: CSSProperties = {
   color: "#f5efe6",
   fontWeight: 800,
   minWidth: 96
+};
+
+const sheetBackdrop: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,38,0.28)",
+  backdropFilter: "blur(8px)",
+  zIndex: 60
+};
+
+const sheet: CSSProperties = {
+  position: "fixed",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  zIndex: 70,
+  background: "rgba(255,255,255,0.98)",
+  borderTopLeftRadius: 28,
+  borderTopRightRadius: 28,
+  borderTop: "1px solid rgba(16,24,38,0.08)",
+  padding: 16,
+  boxShadow: "0 -18px 60px rgba(16,24,38,0.18)",
+  display: "grid",
+  gap: 12
+};
+
+const sheetTitle: CSSProperties = {
+  fontSize: 20,
+  fontWeight: 900,
+  letterSpacing: "-0.04em"
+};
+
+const sheetSub: CSSProperties = {
+  fontSize: 13,
+  lineHeight: 1.5,
+  color: "rgba(16,24,38,0.62)"
+};
+
+const sheetInput: CSSProperties = {
+  borderRadius: 16,
+  border: "1px solid rgba(16,24,38,0.08)",
+  padding: "12px 14px",
+  background: "rgba(255,255,255,0.92)",
+  fontSize: 15
+};
+
+const sheetPrimary: CSSProperties = {
+  border: 0,
+  borderRadius: 16,
+  padding: "12px 16px",
+  background: "#101826",
+  color: "#f5efe6",
+  fontWeight: 800
+};
+
+const sheetSecondary: CSSProperties = {
+  border: "1px solid rgba(16,24,38,0.08)",
+  borderRadius: 16,
+  padding: "12px 16px",
+  background: "rgba(255,255,255,0.88)",
+  color: "#101826",
+  fontWeight: 700
+};
+
+const sheetHint: CSSProperties = {
+  fontSize: 12,
+  color: "rgba(16,24,38,0.56)",
+  lineHeight: 1.5
 };
