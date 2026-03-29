@@ -43,11 +43,11 @@ type ProfileRow = {
 
 const STORAGE_KEY = "future-me-draft";
 const MEMORY_SUMMARY_KEY = "future-me-memory";
+const EMAIL_COOLDOWN_KEY = "future-me-email-cooldown-until";
 const FREE_LIMIT = 5;
 const MAX_MESSAGES = 50;
 const MIN_REPLY_DELAY_MS = 650;
 const EMAIL_COOLDOWN_MS = 60_000;
-const EMAIL_COOLDOWN_KEY = "future-me-email-cooldown-until";
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
@@ -339,12 +339,12 @@ async function saveCloudTurn(user: User, userText: string, assistantText: string
   if (profileRes.error) console.error(profileRes.error);
 }
 
-function getEmailCooldownUntil() {
+function readEmailCooldownUntil() {
   if (typeof window === "undefined") return 0;
   return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
 }
 
-function setEmailCooldownUntilValue(ts: number) {
+function writeEmailCooldownUntil(ts: number) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
 }
@@ -647,13 +647,14 @@ function createStyles(
     memoryCard: {
       borderRadius: 26,
       padding: 16,
-      background:
-        "linear-gradient(180deg, rgba(52,32,40,0.94), rgba(33,24,34,0.96))",
+      background: "linear-gradient(180deg, rgba(52,32,40,0.94), rgba(33,24,34,0.96))",
       border: "1px solid rgba(255,255,255,0.08)",
       boxShadow: "0 20px 56px rgba(26,18,26,0.18)",
       backdropFilter: "blur(18px)",
       display: "grid",
       gap: 12,
+      position: "relative",
+      overflow: "hidden",
     },
     memoryHeader: {
       display: "flex",
@@ -787,8 +788,7 @@ function createStyles(
     aiPanel: {
       borderRadius: 26,
       padding: 16,
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.60))",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 18px 46px rgba(16,24,38,0.07)",
       backdropFilter: "blur(18px)",
@@ -865,8 +865,7 @@ function createStyles(
       display: "flex",
       flexDirection: "column",
       borderRadius: 34,
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.60))",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
       overflow: "hidden",
@@ -1077,8 +1076,7 @@ function createStyles(
     composerShell: {
       flex: "0 0 auto",
       borderRadius: 26,
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.58))",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.58))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
       backdropFilter: "blur(22px)",
@@ -1334,16 +1332,6 @@ function createStyles(
   };
 }
 
-function getEmailCooldownUntil() {
-  if (typeof window === "undefined") return 0;
-  return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
-}
-
-function setEmailCooldownUntilValue(ts: number) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
-}
-
 export default function Page() {
   const [mobile, setMobile] = useState(false);
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
@@ -1398,10 +1386,10 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    const initialCooldown = getEmailCooldownUntil();
+    const initialCooldown = readEmailCooldownUntil();
     setEmailCooldownUntilState(initialCooldown);
     const timer = window.setInterval(() => {
-      setEmailCooldownUntilState(getEmailCooldownUntil());
+      setEmailCooldownUntilState(readEmailCooldownUntil());
     }, 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -1537,7 +1525,6 @@ export default function Page() {
     setEmailInput(nextUser.email ?? "");
 
     const { profile, messages: cloudMessages } = await loadCloudState(nextUser.id);
-
     if (cloudMessages.length > 0) {
       setMessages(cloudMessages.slice(-MAX_MESSAGES));
     }
@@ -1561,7 +1548,7 @@ export default function Page() {
     const email = emailInput.trim().toLowerCase();
     if (!email) return;
 
-    const cooldownUntil = getEmailCooldownUntil();
+    const cooldownUntil = readEmailCooldownUntil();
     if (Date.now() < cooldownUntil) {
       setLoginStatus(`Wait ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s and try again.`);
       return;
@@ -1584,30 +1571,10 @@ export default function Page() {
     }
 
     const until = Date.now() + EMAIL_COOLDOWN_MS;
-    setEmailCooldownUntilValue(until);
+    writeEmailCooldownUntil(until);
     setEmailCooldownUntilState(until);
     setLoginStatus("Check your email for the sign-in link.");
     setSendingEmail(false);
-  }
-
-  async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
-    if (!supabase) return;
-
-    const now = new Date().toISOString();
-
-    const insertRes = await supabase.from("messages").insert([
-      { user_id: user.id, role: "me", text: userText },
-      { user_id: user.id, role: "future me", text: assistantText },
-    ]);
-    if (insertRes.error) console.error(insertRes.error);
-
-    const profileRes = await supabase.from("profiles").upsert({
-      user_id: user.id,
-      email: user.email ?? null,
-      memory_summary: memorySummary,
-      last_seen_at: now,
-    });
-    if (profileRes.error) console.error(profileRes.error);
   }
 
   function continueFromYesterday() {
@@ -1802,9 +1769,9 @@ export default function Page() {
           min-height: 100%;
           height: auto;
           background:
-            radial-gradient(circle at 50% 10%, rgba(255,255,255,0.92), rgba(255,255,255,0.0) 30%),
-            radial-gradient(circle at 20% 20%, rgba(155,120,255,0.16), transparent 28%),
-            radial-gradient(circle at 85% 18%, rgba(255,194,117,0.14), transparent 24%),
+            radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
+            radial-gradient(circle at 20% 20%, rgba(155, 120, 255, 0.16), transparent 28%),
+            radial-gradient(circle at 85% 18%, rgba(255, 194, 117, 0.14), transparent 24%),
             linear-gradient(180deg, #f6f0e8 0%, #ebe4d8 100%);
           color: #101826;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -2144,7 +2111,9 @@ export default function Page() {
               <div style={styles.avatar}>FM</div>
               <div style={{ minWidth: 0 }}>
                 <div style={styles.aiTitle}>Future Me</div>
-                <div style={styles.aiSub}>{hasConversationStarted ? "Online & remembering" : "Ready to respond"}</div>
+                <div style={styles.aiSub}>
+                  {hasConversationStarted ? "Online & remembering" : "Ready to respond"}
+                </div>
               </div>
             </div>
 
