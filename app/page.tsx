@@ -13,21 +13,21 @@ type Message = {
   time: string;
 };
 
+type Usage = {
+  date: string;
+  count: number;
+};
+
 type PersistedState = {
   messages: Message[];
   input: string;
   mood: Mood;
   isPro: boolean;
-  usage: DailyUsage;
-};
-
-type DailyUsage = {
-  date: string;
-  count: number;
+  usage: Usage;
 };
 
 const STORAGE_KEY = "future-me-v6";
-const USAGE_LIMIT_FREE = 5;
+const FREE_LIMIT = 5;
 const MAX_MESSAGES = 50;
 const MIN_REPLY_DELAY_MS = 850;
 
@@ -57,23 +57,29 @@ function formatClock() {
 }
 
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function defaultUsage(): DailyUsage {
+function defaultUsage(): Usage {
   return { date: todayKey(), count: 0 };
 }
 
-function normalizeUsage(value: unknown): DailyUsage {
+function normalizeUsage(value: unknown): Usage {
   const today = todayKey();
   if (
     value &&
     typeof value === "object" &&
-    typeof (value as DailyUsage).date === "string" &&
-    typeof (value as DailyUsage).count === "number"
+    typeof (value as Usage).date === "string" &&
+    typeof (value as Usage).count === "number"
   ) {
-    const usage = value as DailyUsage;
-    if (usage.date === today) return { date: today, count: Math.max(0, usage.count) };
+    const usage = value as Usage;
+    if (usage.date === today) {
+      return { date: today, count: Math.max(0, usage.count) };
+    }
   }
   return defaultUsage();
 }
@@ -180,6 +186,16 @@ function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean, lastA
   const pool = isFinnish ? source.fi : source.en;
   const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
   return pool[Math.abs(score) % pool.length];
+}
+
+function buildMemory(messages: Message[], mood: Mood) {
+  const recentUserMessages = messages
+    .filter((m) => m.role === "me")
+    .slice(-4)
+    .map((m) => m.text)
+    .join(" | ");
+
+  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}`.slice(0, 240);
 }
 
 function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProperties> {
@@ -658,14 +674,15 @@ export default function Page() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [isPro, setIsPro] = useState(false);
-  const [usage, setUsage] = useState<DailyUsage>(defaultUsage());
+  const [usage, setUsage] = useState<Usage>(defaultUsage());
 
+  const streamRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const UPGRADE_URL =
-    process.env.NEXT_PUBLIC_PRO_CHECKOUT_URL || process.env.NEXT_PUBLIC_PRO_UPGRADE_URL || "";
+  const previewRef = useRef<HTMLDivElement | null>(null);
 
-  const remainingToday = isPro ? Infinity : Math.max(0, USAGE_LIMIT_FREE - usage.count);
+  const remainingToday =
+    usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
 
   useEffect(() => {
     const update = () => setMobile(window.innerWidth < 900);
@@ -701,7 +718,6 @@ export default function Page() {
       const params = new URLSearchParams(window.location.search);
       if (params.get("pro") === "1" || params.get("pro") === "true") {
         setIsPro(true);
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ isPro: true }));
         params.delete("pro");
         const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
         window.history.replaceState({}, "", nextUrl);
@@ -746,21 +762,10 @@ export default function Page() {
 
   const styles = useMemo(() => createStyles(mobile, isPro), [mobile, isPro]);
 
-  function persistPro(value: boolean) {
-    setIsPro(value);
-    const next: PersistedState = {
-      messages,
-      input,
-      mood,
-      isPro: value,
-      usage
-    };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  }
-
   function incrementUsage() {
     const today = todayKey();
-    const nextUsage = usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
+    const nextUsage =
+      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
     setUsage(nextUsage);
     return nextUsage;
   }
@@ -791,6 +796,7 @@ export default function Page() {
     if (!isPro) incrementUsage();
 
     const startedAt = Date.now();
+    const memory = buildMemory(nextMessages, mood);
 
     try {
       const response = await fetch("/api/generate", {
@@ -799,12 +805,14 @@ export default function Page() {
         body: JSON.stringify({
           messages: nextMessages,
           mood,
-          isPro
+          isPro,
+          memory
         })
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const lastAssistant =
+        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
@@ -857,17 +865,38 @@ export default function Page() {
   }
 
   async function shareConversation() {
-    const transcript = messages.map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`).join("\n\n");
+    const transcript = messages
+      .map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`)
+      .join("\n\n");
 
     try {
-      if (navigator.share) {
-        await navigator.share({
-          title: "Future Me",
-          text: transcript
+      if (previewRef.current) {
+        const html2canvas = (await import("html2canvas")).default;
+        const canvas = await html2canvas(previewRef.current, {
+          backgroundColor: null,
+          scale: 2
         });
-        return;
-      }
 
+        const blob = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob((b) => resolve(b), "image/png");
+        });
+
+        if (blob) {
+          const file = new File([blob], "future-me.png", { type: "image/png" });
+          if (navigator.share && navigator.canShare?.({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: "Future Me"
+            });
+            return;
+          }
+        }
+      }
+    } catch {
+      // fall back to text
+    }
+
+    try {
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(transcript);
       }
@@ -878,14 +907,6 @@ export default function Page() {
 
   function openUpgrade() {
     setMenuOpen(false);
-    setPaywallOpen(true);
-  }
-
-  function goUpgrade() {
-    if (UPGRADE_URL) {
-      window.location.href = UPGRADE_URL;
-      return;
-    }
     setPaywallOpen(true);
   }
 
@@ -1029,8 +1050,8 @@ export default function Page() {
           </div>
 
           <div style={styles.paywallButtons}>
-            <button style={styles.proButton} onClick={goUpgrade} disabled={!UPGRADE_URL}>
-              {UPGRADE_URL ? "Go Pro" : "Set checkout URL"}
+            <button style={styles.proButton} onClick={() => setIsPro(true)}>
+              Unlock demo Pro
             </button>
             <button style={styles.ghostButton} onClick={shareConversation}>
               Share conversation
@@ -1041,8 +1062,7 @@ export default function Page() {
           </div>
 
           <div style={styles.hintLine}>
-            Tip: set <code>NEXT_PUBLIC_PRO_CHECKOUT_URL</code> to your checkout link. After payment, redirect back with
-            <code>?pro=1</code> and the app unlocks automatically.
+            After you add real checkout, redirect back with <code>?pro=1</code> and the app will unlock automatically.
           </div>
         </aside>
       )}
@@ -1087,7 +1107,7 @@ export default function Page() {
           ))}
         </div>
 
-        <section style={styles.threadCard}>
+        <section ref={previewRef} style={styles.threadCard}>
           <div style={styles.threadHeader}>
             <div style={styles.threadLeft}>
               <div style={styles.avatar}>FM</div>
@@ -1144,7 +1164,7 @@ export default function Page() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isPro ? "Write anything..." : "Write anything..."}
+              placeholder="Write anything..."
               rows={1}
             />
 
@@ -1154,7 +1174,8 @@ export default function Page() {
           </div>
 
           <div style={styles.helper}>
-            Press Enter to send · Shift+Enter for a new line · {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
+            Press Enter to send · Shift+Enter for a new line ·{" "}
+            {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
           </div>
         </section>
       </div>
