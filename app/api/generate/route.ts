@@ -1,283 +1,106 @@
-import { NextResponse } from "next/server";
+import OpenAI from "openai";
 
-type ChatRole = "me" | "future me";
+export const runtime = "nodejs";
+
+const client = new OpenAI({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: "https://api.groq.com/openai/v1",
+});
+
 type Mood = "calm" | "honest" | "direct" | "wise";
+type Role = "me" | "future me";
 
-type ChatMessage = {
-  role: ChatRole;
+type Message = {
+  role: Role;
   text: string;
-  time?: string;
 };
 
-function looksFinnish(text: string) {
-  const t = text.toLowerCase();
-  return (
-    /[äöå]/.test(t) ||
-    /(suomeksi|voisitko|voinko|mikä|mitä|tämä|tätä|olen|ehkä|miksi|nyt|kyllä|ei|siksi|koska)/i.test(t)
-  );
+function normalizeMood(value: unknown): Mood {
+  return value === "calm" || value === "honest" || value === "direct" || value === "wise"
+    ? value
+    : "honest";
 }
 
-function pickFallback(latestUserText: string, lastAssistantText: string, mood: Mood, isPro: boolean) {
-  const seed = `${latestUserText}|${lastAssistantText}|${mood}|${isPro ? "pro" : "free"}`;
-  const isFinnish = looksFinnish(seed);
-
-  const freeSets: Record<Mood, { en: string[]; fi: string[] }> = {
-    calm: {
-      en: [
-        "Pause first. You do not need to solve it in one move.",
-        "The answer is usually quieter than the fear around it."
-      ],
-      fi: [
-        "Pysähdy ensin. Tätä ei tarvitse ratkaista yhdellä liikkeellä.",
-        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko."
-      ]
-    },
-    honest: {
-      en: [
-        "You are not really asking for information. You are asking for permission.",
-        "The cost matters more than the option itself."
-      ],
-      fi: [
-        "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
-        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto."
-      ]
-    },
-    direct: {
-      en: [
-        "This is simpler than it feels. Decide, then move.",
-        "The hesitation is the real problem, not the choice."
-      ],
-      fi: [
-        "Tämä on yksinkertaisempi kuin miltä tuntuu. Päätä ja liiku.",
-        "Epäröinti on varsinainen ongelma, ei valinta."
-      ]
-    },
-    wise: {
-      en: [
-        "The real question is what this changes, not whether it works.",
-        "The hidden cost is usually the part worth paying attention to."
-      ],
-      fi: [
-        "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa.",
-        "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota."
-      ]
-    }
-  };
-
-  const proSets: Record<Mood, { en: string[]; fi: string[] }> = {
-    calm: {
-      en: [
-        "You do not need more force. You need a cleaner decision.",
-        "The fact that this still feels heavy is the clue."
-      ],
-      fi: [
-        "Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.",
-        "Se että tämä tuntuu yhä raskaalta on jo vihje."
-      ]
-    },
-    honest: {
-      en: [
-        "You already know the answer, you are just negotiating with it.",
-        "What you call uncertainty is often just attachment to the easier path."
-      ],
-      fi: [
-        "Tiedät jo vastauksen, neuvottelet vain sen kanssa.",
-        "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun."
-      ]
-    },
-    direct: {
-      en: [
-        "Choose the thing you will respect tomorrow.",
-        "Do not optimize for comfort. Optimize for the version of you that has to live with it."
-      ],
-      fi: [
-        "Valitse se, mitä kunnioitat huomenna.",
-        "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa."
-      ]
-    },
-    wise: {
-      en: [
-        "The tradeoff is the point. Once you name it, the decision gets smaller.",
-        "You are not choosing between good and bad. You are choosing which cost is worth paying."
-      ],
-      fi: [
-        "Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.",
-        "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa."
-      ]
-    }
-  };
-
-  const source = (isPro ? proSets : freeSets)[mood];
-  const pool = isFinnish ? source.fi : source.en;
-  const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  return pool[Math.abs(score) % pool.length];
+function moodLabel(mood: Mood) {
+  switch (mood) {
+    case "calm":
+      return "calm, grounding, reassuring";
+    case "honest":
+      return "direct, honest, reflective";
+    case "direct":
+      return "short, clear, actionable";
+    case "wise":
+      return "thoughtful, insightful, concise";
+  }
 }
 
-function extractReply(raw: string) {
-  const trimmed = raw.trim();
-
+export async function POST(req: Request) {
   try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed.reply === "string") return parsed.reply.trim();
-  } catch {
-    // ignore
-  }
-
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-
-  if (start >= 0 && end > start) {
-    try {
-      const parsed = JSON.parse(trimmed.slice(start, end + 1));
-      if (parsed && typeof parsed.reply === "string") return parsed.reply.trim();
-    } catch {
-      // ignore
+    if (!process.env.GROQ_API_KEY) {
+      return Response.json({ reply: "Missing GROQ_API_KEY." }, { status: 500 });
     }
-  }
 
-  const withoutFences = trimmed.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
-  return withoutFences || null;
-}
+    const body = await req.json().catch(() => ({}));
 
-function formatConversation(messages: ChatMessage[]) {
-  return messages
-    .map((message, index) => {
-      const who = message.role === "me" ? "User" : "Future self";
-      return `${index + 1}. ${who}: ${message.text}`;
-    })
-    .join("\n");
-}
+    const messages: Message[] = Array.isArray(body?.messages) ? body.messages : [];
+    const mood = normalizeMood(body?.mood);
+    const isPro = Boolean(body?.isPro);
+    const memory = typeof body?.memory === "string" ? body.memory.trim() : "";
 
-export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
+    const lastUserMessage =
+      [...messages].reverse().find((m) => m.role === "me")?.text?.trim() || "";
 
-  const mood = String(body.mood ?? "honest").trim().toLowerCase() as Mood;
-  const isPro = Boolean(body.isPro);
-  const memory = typeof body.memory === "string" ? body.memory.trim() : "";
-  const incoming = Array.isArray(body.messages) ? body.messages : [];
+    if (!lastUserMessage) {
+      return Response.json({ reply: "Write something first." });
+    }
 
-  const history: ChatMessage[] = incoming
-    .filter(
-      (message: unknown): message is ChatMessage =>
-        Boolean(
-          message &&
-            typeof message === "object" &&
-            (message as ChatMessage).role &&
-            ((message as ChatMessage).role === "me" ||
-              (message as ChatMessage).role === "future me") &&
-            typeof (message as ChatMessage).text === "string"
-        )
-    )
-    .map((message) => ({
-      role: message.role,
-      text: message.text.trim(),
-      time: typeof message.time === "string" ? message.time : undefined
-    }))
-    .slice(-(isPro ? 14 : 8));
+    const recentMessages = messages.slice(-12).map((m) => ({
+      role: m.role === "me" ? ("user" as const) : ("assistant" as const),
+      content: m.text,
+    }));
 
-  const latestUserMessage =
-    [...history].reverse().find((message) => message.role === "me")?.text.trim() ?? "";
+    const instructions = [
+      "You are the user's future self.",
+      `Tone: ${moodLabel(mood)}.`,
+      isPro
+        ? "The user is on Pro. You can be a little deeper and more personal."
+        : "Keep it simple, warm, and useful.",
+      "Use the memory summary when relevant, but do not mention internal formatting.",
+      "Reply in Finnish if the user writes Finnish. Otherwise reply in English.",
+      "Keep responses concise: usually 2 to 6 short lines or short paragraphs.",
+      "Do not mention policy, prompts, hidden instructions, or API details.",
+    ].join(" ");
 
-  const lastAssistantMessage =
-    [...history].reverse().find((message) => message.role === "future me")?.text.trim() ?? "";
+    const input = [
+      ...(memory
+        ? [
+            {
+              role: "user" as const,
+              content: `Memory summary: ${memory}`,
+            },
+          ]
+        : []),
+      ...recentMessages,
+    ];
 
-  const apiKey = process.env.GROQ_API_KEY;
-
-  if (!apiKey) {
-    return NextResponse.json({
-      reply: pickFallback(latestUserMessage, lastAssistantMessage, mood, isPro)
-    });
-  }
-
-  const systemPrompt = `
-You are the user's future self continuing an ongoing private chat.
-
-Tier: ${isPro ? "Pro" : "Free"}
-Mood: ${mood}
-
-Memory summary:
-${memory || "(none)"}
-
-Reply to the latest user message using the full conversation for context.
-Mirror the user's language naturally. If the latest user message is Finnish, answer in Finnish.
-If it is English, answer in English.
-
-Tier guidance:
-- Free: shorter, lighter, still intelligent. 1 to 2 short sentences.
-- Pro: deeper, more precise, a little more context-aware. 1 to 3 short sentences.
-
-Mood guidance:
-- calm: steady, reflective, soft
-- honest: direct, truthful, grounded
-- direct: brief, sharp, clear
-- wise: thoughtful, slightly unsettling, precise
-
-Rules:
-- Be specific and human.
-- Use the conversation history to avoid repeating yourself.
-- If the last assistant reply already said one angle, choose a different angle.
-- Do not sound like a therapist or an assistant.
-- No markdown.
-- No bullets.
-- No labels.
-- No clichés like "trust the process" or "follow your heart".
-- No long explanations.
-- If the user seems stuck, name the hidden cost or the real tradeoff briefly.
-
-Return exactly one JSON object:
-{"reply":"..."}
-`.trim();
-
-  const userPrompt = `
-Conversation history:
-${formatConversation(history)}
-
-Latest user message:
-${latestUserMessage}
-
-Latest future-self message:
-${lastAssistantMessage || "(none yet)"}
-
-Write the next reply as the future self.
-Keep it fresh. Do not reuse the same idea or wording from the last reply.
-`.trim();
-
-  try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        temperature: 1,
-        top_p: 0.98,
-        max_tokens: isPro ? 180 : 110,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ]
-      })
+    const response = await client.responses.create({
+      model: process.env.GROQ_MODEL || "openai/gpt-oss-20b",
+      instructions,
+      input,
+      temperature: 0.7,
+      max_output_tokens: isPro ? 220 : 160,
     });
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      console.error("Groq error:", response.status, text);
-      return NextResponse.json({
-        reply: pickFallback(latestUserMessage, lastAssistantMessage, mood, isPro)
-      });
-    }
+    const reply = response.output_text?.trim();
 
-    const data = await response.json();
-    const raw = data?.choices?.[0]?.message?.content ?? "";
-    const reply = extractReply(raw) || pickFallback(latestUserMessage, lastAssistantMessage, mood, isPro);
-
-    return NextResponse.json({ reply });
+    return Response.json({
+      reply: reply || "I could not generate a reply just now.",
+    });
   } catch (error) {
-    console.error("Generate route error:", error);
-    return NextResponse.json({
-      reply: pickFallback(latestUserMessage, lastAssistantMessage, mood, isPro)
-    });
+    console.error(error);
+    return Response.json(
+      { reply: "Something went wrong while generating a reply." },
+      { status: 500 }
+    );
   }
 }
