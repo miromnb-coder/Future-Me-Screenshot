@@ -14,17 +14,17 @@ type Message = {
   time: string;
 };
 
+type Usage = {
+  date: string;
+  count: number;
+};
+
 type PersistedState = {
   messages: Message[];
   input: string;
   mood: Mood;
   isPro: boolean;
   usage: Usage;
-};
-
-type Usage = {
-  date: string;
-  count: number;
 };
 
 type MessageRow = {
@@ -216,7 +216,6 @@ const supabase: SupabaseClient | null =
 
 function readDraft(key: string): PersistedState | null {
   if (typeof window === "undefined") return null;
-
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
@@ -757,7 +756,7 @@ function getEmailCooldownUntil() {
   return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
 }
 
-function setEmailCooldownUntil(ts: number) {
+function setEmailCooldownUntilValue(ts: number) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
 }
@@ -784,9 +783,7 @@ export default function Page() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const remainingToday =
-    usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
-
+  const remainingToday = usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
   const cooldownLeftMs = Math.max(0, emailCooldownUntil - Date.now());
   const cooldownLeftSec = Math.ceil(cooldownLeftMs / 1000);
   const emailDisabled = sendingEmail || cooldownLeftMs > 0;
@@ -796,7 +793,7 @@ export default function Page() {
   }, [user?.email]);
 
   useEffect(() => {
-    const update = () => setMobile(window.innerWidth < 900));
+    const update = () => setMobile(window.innerWidth < 900);
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -943,8 +940,7 @@ export default function Page() {
 
   function incrementUsage() {
     const today = todayKey();
-    const nextUsage =
-      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
+    const nextUsage = usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
     setUsage(nextUsage);
     return nextUsage;
   }
@@ -958,8 +954,9 @@ export default function Page() {
     const email = emailInput.trim().toLowerCase();
     if (!email) return;
 
-    if (Date.now() < getEmailCooldownUntil()) {
-      setLoginStatus(`Wait ${Math.ceil((getEmailCooldownUntil() - Date.now()) / 1000)}s and try again.`);
+    const cooldownUntil = getEmailCooldownUntil();
+    if (Date.now() < cooldownUntil) {
+      setLoginStatus(`Wait ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s and try again.`);
       return;
     }
 
@@ -980,10 +977,8 @@ export default function Page() {
     }
 
     const until = Date.now() + EMAIL_COOLDOWN_MS;
-    setEmailCooldownUntil(until);
+    setEmailCooldownUntilValue(until);
     setEmailCooldownUntilState(until);
-    setEmailCooldownUntil(until);
-
     setLoginStatus("Check your email for the sign-in link.");
     setSendingEmail(false);
   }
@@ -1041,8 +1036,7 @@ export default function Page() {
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant =
-        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
@@ -1240,7 +1234,11 @@ export default function Page() {
             }}
           />
 
-          <button style={{ ...styles.sheetPrimary, opacity: emailDisabled ? 0.6 : 1 }} onClick={() => void signInWithEmail()} disabled={emailDisabled}>
+          <button
+            style={{ ...styles.sheetPrimary, opacity: emailDisabled ? 0.6 : 1 }}
+            onClick={() => void signInWithEmail()}
+            disabled={emailDisabled}
+          >
             {sendingEmail ? "Sending..." : cooldownLeftMs > 0 ? `Wait ${cooldownLeftSec}s` : "Send magic link"}
           </button>
 
