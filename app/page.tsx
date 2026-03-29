@@ -70,11 +70,11 @@ const moodHints: Record<Mood, string> = {
   wise: "see the pattern",
 };
 
-const placeholderByMood: Record<Mood, string> = {
+const moodPlaceholders: Record<Mood, string> = {
   calm: "What feels heavy right now?",
   honest: "What are you actually avoiding?",
   direct: "Say the thing.",
-  wise: "What matters most here?",
+  wise: "What really matters here?",
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -117,9 +117,7 @@ function normalizeUsage(value: unknown): Usage {
     typeof (value as Usage).count === "number"
   ) {
     const usage = value as Usage;
-    if (usage.date === today) {
-      return { date: today, count: Math.max(0, usage.count) };
-    }
+    if (usage.date === today) return { date: today, count: Math.max(0, usage.count) };
   }
   return defaultUsage();
 }
@@ -181,44 +179,20 @@ function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean, lastA
 
   const proSets: Record<Mood, { en: string[]; fi: string[] }> = {
     calm: {
-      en: [
-        "You do not need more force. You need a cleaner decision.",
-        "The fact that this still feels heavy is the clue.",
-      ],
-      fi: [
-        "Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.",
-        "Se että tämä tuntuu yhä raskaalta on jo vihje.",
-      ],
+      en: ["You do not need more force. You need a cleaner decision.", "The fact that this still feels heavy is the clue."],
+      fi: ["Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.", "Se että tämä tuntuu yhä raskaalta on jo vihje."],
     },
     honest: {
-      en: [
-        "You already know the answer, you are just negotiating with it.",
-        "What you call uncertainty is often just attachment to the easier path.",
-      ],
-      fi: [
-        "Tiedät jo vastauksen, neuvottelet vain sen kanssa.",
-        "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun.",
-      ],
+      en: ["You already know the answer, you are just negotiating with it.", "What you call uncertainty is often just attachment to the easier path."],
+      fi: ["Tiedät jo vastauksen, neuvottelet vain sen kanssa.", "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun."],
     },
     direct: {
-      en: [
-        "Choose the thing you will respect tomorrow.",
-        "Do not optimize for comfort. Optimize for the version of you that has to live with it.",
-      ],
-      fi: [
-        "Valitse se, mitä kunnioitat huomenna.",
-        "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa.",
-      ],
+      en: ["Choose the thing you will respect tomorrow.", "Do not optimize for comfort. Optimize for the version of you that has to live with it."],
+      fi: ["Valitse se, mitä kunnioitat huomenna.", "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa."],
     },
     wise: {
-      en: [
-        "The tradeoff is the point. Once you name it, the decision gets smaller.",
-        "You are not choosing between good and bad. You are choosing which cost is worth paying.",
-      ],
-      fi: [
-        "Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.",
-        "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa.",
-      ],
+      en: ["The tradeoff is the point. Once you name it, the decision gets smaller.", "You are not choosing between good and bad. You are choosing which cost is worth paying."],
+      fi: ["Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.", "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa."],
     },
   };
 
@@ -246,9 +220,7 @@ function buildMemoryPrompt(messages: Message[], mood: Mood, memorySummary = "") 
     .map((m) => m.text)
     .join(" | ");
 
-  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${
-    memorySummary ? ` | Summary: ${memorySummary}` : ""
-  }`.slice(0, 240);
+  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`.slice(0, 240);
 }
 
 function loadDraft(key: string): PersistedState | null {
@@ -293,23 +265,14 @@ async function loadCloudState(userId: string) {
   if (!supabase) return { profile: null as ProfileRow | null, messages: [] as Message[] };
 
   const [profileRes, messagesRes] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("user_id,email,memory_summary,last_seen_at")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    supabase
-      .from("messages")
-      .select("id,role,text,created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(80),
+    supabase.from("profiles").select("user_id,email,memory_summary,last_seen_at").eq("user_id", userId).maybeSingle(),
+    supabase.from("messages").select("id,role,text,created_at").eq("user_id", userId).order("created_at", { ascending: true }).limit(80),
   ]);
 
-  const profile = (profileRes.data ?? null) as ProfileRow | null;
-  const messages = normalizeMessageRows((messagesRes.data ?? []) as MessageRow[]);
-
-  return { profile, messages };
+  return {
+    profile: (profileRes.data ?? null) as ProfileRow | null,
+    messages: normalizeMessageRows((messagesRes.data ?? []) as MessageRow[]),
+  };
 }
 
 async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
@@ -321,10 +284,7 @@ async function saveCloudTurn(user: User, userText: string, assistantText: string
     { user_id: user.id, role: "me", text: userText },
     { user_id: user.id, role: "future me", text: assistantText },
   ]);
-
-  if (insertRes.error) {
-    console.error(insertRes.error);
-  }
+  if (insertRes.error) console.error(insertRes.error);
 
   const profileRes = await supabase.from("profiles").upsert({
     user_id: user.id,
@@ -332,13 +292,21 @@ async function saveCloudTurn(user: User, userText: string, assistantText: string
     memory_summary: memorySummary,
     last_seen_at: now,
   });
-
-  if (profileRes.error) {
-    console.error(profileRes.error);
-  }
+  if (profileRes.error) console.error(profileRes.error);
 }
 
-function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProperties> {
+function getEmailCooldownUntil() {
+  if (typeof window === "undefined") return 0;
+  return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
+}
+
+function setEmailCooldownUntilValue(ts: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
+}
+
+function createStyles(mobile: boolean, isPro: boolean, started: boolean, loading: boolean): Record<string, CSSProperties> {
+  const heroCollapsed = started;
   return {
     page: {
       minHeight: "100dvh",
@@ -350,8 +318,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       background:
         "radial-gradient(circle at 10% 10%, rgba(134, 174, 255, 0.30), transparent 24%), radial-gradient(circle at 90% 15%, rgba(255, 183, 191, 0.26), transparent 22%), radial-gradient(circle at 50% 90%, rgba(117, 231, 193, 0.18), transparent 26%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
       color: "#101826",
-      fontFamily:
-        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       position: "relative",
     },
     shell: {
@@ -366,7 +333,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       position: "relative",
       zIndex: 1,
     },
-    ambientGlowA: {
+    glowA: {
       position: "fixed",
       inset: "auto auto 8% -8%",
       width: 260,
@@ -377,7 +344,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       pointerEvents: "none",
       zIndex: 0,
     },
-    ambientGlowB: {
+    glowB: {
       position: "fixed",
       inset: "8% -6% auto auto",
       width: 320,
@@ -389,13 +356,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       zIndex: 0,
     },
     topBar: {
-      flex: "0 0 auto",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
       padding: "10px 10px",
-      background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.52))",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.56))",
       borderRadius: 22,
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 16px 46px rgba(16,24,38,0.08)",
@@ -429,24 +395,25 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       height: 44,
       borderRadius: 16,
       border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.78)",
+      background: "rgba(255,255,255,0.80)",
       color: "#101826",
       display: "grid",
       placeItems: "center",
       cursor: "pointer",
       boxShadow: "0 12px 26px rgba(16,24,38,0.05)",
-      transition: "transform 160ms ease, box-shadow 160ms ease, background 160ms ease",
     },
-    heroCard: {
+    hero: {
       borderRadius: 30,
       padding: mobile ? 18 : 22,
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.58))",
+      background: heroCollapsed
+        ? "linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.62))"
+        : "linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
       backdropFilter: "blur(20px)",
-      position: "relative",
       overflow: "hidden",
+      transition: "all 0.45s cubic-bezier(0.22, 1, 0.36, 1)",
+      position: "relative",
     },
     heroShine: {
       position: "absolute",
@@ -455,8 +422,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       height: 260,
       borderRadius: 999,
       background: "radial-gradient(circle, rgba(134,174,255,0.22), rgba(134,174,255,0))",
-      pointerEvents: "none",
       filter: "blur(8px)",
+      pointerEvents: "none",
     },
     heroTop: {
       display: "flex",
@@ -464,9 +431,9 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       alignItems: "flex-start",
       gap: 12,
       flexWrap: "wrap",
-      marginBottom: 14,
+      marginBottom: 12,
     },
-    heroBadge: {
+    badge: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
@@ -479,7 +446,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       letterSpacing: "0.02em",
       width: "fit-content",
     },
-    heroBadgeAccent: {
+    badgeAccent: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
@@ -499,12 +466,14 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       lineHeight: 0.98,
       maxWidth: 560,
       marginBottom: 10,
+      transition: "all 0.35s ease",
     },
     heroSub: {
       fontSize: mobile ? 14 : 15,
       lineHeight: 1.6,
       color: "rgba(16,24,38,0.68)",
-      maxWidth: 700,
+      maxWidth: 720,
+      transition: "opacity 0.35s ease, transform 0.35s ease",
     },
     heroMetrics: {
       display: "grid",
@@ -519,36 +488,35 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
     },
-    metricLabel: {
-      fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
-      marginTop: 4,
-    },
     metricValue: {
       fontSize: mobile ? 20 : 24,
       fontWeight: 900,
       letterSpacing: "-0.04em",
       lineHeight: 1,
     },
-    heroCompact: {
+    metricLabel: {
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)",
+      marginTop: 4,
+    },
+    compactHero: {
       borderRadius: 30,
       padding: mobile ? 18 : 22,
-      background:
-        "linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.62))",
+      background: "linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
       backdropFilter: "blur(20px)",
-      position: "relative",
       overflow: "hidden",
+      position: "relative",
     },
-    heroCompactTitle: {
+    compactTitle: {
       fontSize: mobile ? 24 : 30,
       fontWeight: 950,
       letterSpacing: "-0.05em",
       lineHeight: 1,
-      marginTop: 8,
+      marginTop: 10,
     },
-    heroCompactSub: {
+    compactSub: {
       marginTop: 10,
       fontSize: mobile ? 14 : 15,
       lineHeight: 1.6,
@@ -580,7 +548,6 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       boxShadow: "0 10px 24px rgba(16,24,38,0.05)",
     },
     statusRow: {
-      flex: "0 0 auto",
       display: "flex",
       flexWrap: "wrap",
       gap: 8,
@@ -596,7 +563,6 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       background: "rgba(255,255,255,0.55)",
       color: "rgba(16,24,38,0.75)",
       fontSize: 12,
-      letterSpacing: "0.01em",
       backdropFilter: "blur(12px)",
       boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
     },
@@ -610,8 +576,83 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       fontWeight: 700,
       boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
     },
-    moodRow: {
+    aiPanel: {
+      borderRadius: 24,
+      padding: 14,
+      background: "linear-gradient(180deg, rgba(255,255,255,0.76), rgba(255,255,255,0.56))",
+      border: "1px solid rgba(16,24,38,0.07)",
+      boxShadow: "0 18px 46px rgba(16,24,38,0.07)",
+      backdropFilter: "blur(18px)",
+      display: "grid",
+      gap: 10,
+    },
+    aiHeader: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      justifyContent: "space-between",
+      flexWrap: "wrap",
+    },
+    aiHeaderLeft: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      minWidth: 0,
+    },
+    aiDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 999,
+      background: loading ? "#64748b" : hasConversationStarted ? "#4caf7a" : "#8d6b3d",
+      boxShadow: loading
+        ? "0 0 0 6px rgba(100,116,139,0.14)"
+        : hasConversationStarted
+          ? "0 0 0 6px rgba(76,175,122,0.14)"
+          : "0 0 0 6px rgba(141,107,61,0.14)",
       flex: "0 0 auto",
+    },
+    aiTitle: {
+      fontSize: 15,
+      fontWeight: 900,
+      letterSpacing: "-0.03em",
+      lineHeight: 1.15,
+    },
+    aiSub: {
+      marginTop: 2,
+      fontSize: 12,
+      color: "rgba(16,24,38,0.58)",
+      lineHeight: 1.4,
+    },
+    aiPill: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "8px 12px",
+      borderRadius: 999,
+      background: "rgba(16,24,38,0.05)",
+      border: "1px solid rgba(16,24,38,0.06)",
+      fontSize: 12,
+      fontWeight: 800,
+      color: "rgba(16,24,38,0.72)",
+    },
+    aiChips: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+    },
+    aiChip: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "7px 10px",
+      borderRadius: 999,
+      background: "rgba(255,255,255,0.72)",
+      border: "1px solid rgba(16,24,38,0.06)",
+      fontSize: 12,
+      color: "rgba(16,24,38,0.74)",
+      fontWeight: 700,
+    },
+    moodRow: {
       display: "flex",
       gap: 8,
       flexWrap: "wrap",
@@ -625,7 +666,6 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       fontSize: 12,
       fontWeight: 700,
       boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
-      backdropFilter: "blur(14px)",
     },
     moodButtonActive: {
       border: "1px solid rgba(16,24,38,0.10)",
@@ -646,8 +686,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     memoryCard: {
       borderRadius: 24,
       padding: 14,
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,0.70), rgba(255,255,255,0.52))",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.70), rgba(255,255,255,0.52))",
       border: "1px solid rgba(16,24,38,0.07)",
       display: "grid",
       gap: 8,
@@ -691,7 +730,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "10px 14px",
       background: "#101826",
       color: "#f5efe6",
-      fontWeight: 800,
+      fontWeight: 900,
       width: "fit-content",
       boxShadow: "0 14px 30px rgba(16,24,38,0.14)",
     },
@@ -699,8 +738,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       display: "flex",
       flexDirection: "column",
       borderRadius: 34,
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.58))",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.58))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
       overflow: "hidden",
@@ -708,7 +746,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       minHeight: mobile ? 360 : 520,
       position: "relative",
     },
-    threadCardGlow: {
+    threadGlow: {
       position: "absolute",
       inset: "-30% auto auto -12%",
       width: 220,
@@ -720,7 +758,6 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       zIndex: 0,
     },
     threadHeader: {
-      flex: "0 0 auto",
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
@@ -780,9 +817,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       height: 8,
       borderRadius: 999,
       background: isPro ? "#4caf7a" : "#8d6b3d",
-      boxShadow: isPro
-        ? "0 0 0 5px rgba(76,175,122,0.16)"
-        : "0 0 0 5px rgba(141,107,61,0.14)",
+      boxShadow: isPro ? "0 0 0 5px rgba(76,175,122,0.16)" : "0 0 0 5px rgba(141,107,61,0.14)",
     },
     threadBody: {
       flex: "1 1 auto",
@@ -804,12 +839,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       width: "100%",
       animation: "floatIn 220ms ease both",
     },
-    meRow: {
-      justifyContent: "flex-end",
-    },
-    futureMeRow: {
-      justifyContent: "flex-start",
-    },
+    meRow: { justifyContent: "flex-end" },
+    futureMeRow: { justifyContent: "flex-start" },
     messageBubble: {
       maxWidth: mobile ? "90%" : "72%",
       minWidth: 0,
@@ -902,11 +933,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       letterSpacing: "0.02em",
       animation: "pulse 1.3s ease-in-out infinite",
     },
-    typingDots: {
-      display: "inline-flex",
-      gap: 6,
-      alignItems: "center",
-    },
+    typingDots: { display: "inline-flex", gap: 6, alignItems: "center" },
     typingDot: {
       width: 6,
       height: 6,
@@ -918,8 +945,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     composerShell: {
       flex: "0 0 auto",
       borderRadius: 26,
-      background:
-        "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.56))",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.56))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
       backdropFilter: "blur(22px)",
@@ -1008,21 +1034,9 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       gap: 12,
       backdropFilter: "blur(18px)",
     },
-    sheetTitle: {
-      fontSize: 18,
-      fontWeight: 900,
-      letterSpacing: "-0.03em",
-    },
-    sheetSub: {
-      marginTop: 3,
-      fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
-      lineHeight: 1.5,
-    },
-    sheetGroup: {
-      display: "grid",
-      gap: 8,
-    },
+    sheetTitle: { fontSize: 18, fontWeight: 900, letterSpacing: "-0.03em" },
+    sheetSub: { marginTop: 3, fontSize: 12, color: "rgba(16,24,38,0.56)", lineHeight: 1.5 },
+    sheetGroup: { display: "grid", gap: 8 },
     sheetButton: {
       width: "100%",
       textAlign: "left",
@@ -1057,20 +1071,9 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       gap: 12,
       backdropFilter: "blur(18px)",
     },
-    paywallHeader: {
-      display: "grid",
-      gap: 4,
-    },
-    paywallTitle: {
-      fontSize: 20,
-      fontWeight: 950,
-      letterSpacing: "-0.04em",
-    },
-    paywallSub: {
-      fontSize: 13,
-      lineHeight: 1.5,
-      color: "rgba(16,24,38,0.62)",
-    },
+    paywallHeader: { display: "grid", gap: 4 },
+    paywallTitle: { fontSize: 20, fontWeight: 950, letterSpacing: "-0.04em" },
+    paywallSub: { fontSize: 13, lineHeight: 1.5, color: "rgba(16,24,38,0.62)" },
     featureCard: {
       borderRadius: 20,
       padding: 14,
@@ -1078,11 +1081,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.06)",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
     },
-    featureList: {
-      display: "grid",
-      gap: 8,
-      marginTop: 4,
-    },
+    featureList: { display: "grid", gap: 8, marginTop: 4 },
     featureItem: {
       display: "flex",
       alignItems: "flex-start",
@@ -1099,11 +1098,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       background: "#101826",
       flex: "0 0 auto",
     },
-    paywallButtons: {
-      display: "flex",
-      gap: 10,
-      flexWrap: "wrap",
-    },
+    paywallButtons: { display: "flex", gap: 10, flexWrap: "wrap" },
     proButton: {
       border: 0,
       borderRadius: 16,
@@ -1167,21 +1162,9 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       fontWeight: 800,
       boxShadow: "0 12px 24px rgba(16,24,38,0.05)",
     },
-    sheetHint: {
-      fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
-      lineHeight: 1.5,
-    },
-    accountGlow: {
-      position: "fixed",
-      inset: "auto 12px 12px auto",
-      width: 140,
-      height: 140,
-      borderRadius: 999,
-      background: "radial-gradient(circle, rgba(255,255,255,0.34), rgba(255,255,255,0))",
-      pointerEvents: "none",
-      zIndex: 0,
-      filter: "blur(10px)",
+    sheetHint: { fontSize: 12, color: "rgba(16,24,38,0.56)", lineHeight: 1.5 },
+    mobileSpacer: {
+      height: 0,
     },
   };
 }
@@ -1220,19 +1203,20 @@ export default function Page() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const remainingToday =
-    usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
-
-  const cooldownLeftMs = Math.max(0, emailCooldownUntil - Date.now());
-  const cooldownLeftSec = Math.ceil(cooldownLeftMs / 1000);
-  const emailDisabled = sendingEmail || cooldownLeftMs > 0;
+  const remainingToday = usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
   const draftKey = useMemo(() => profileToDraftKey(user?.email), [user?.email]);
   const memoryKey = useMemo(() => profileToMemoryKey(user?.email), [user?.email]);
   const hasConversationStarted = messages.some((m) => m.id !== "welcome");
-  const visibleMessageCount = Math.max(0, messages.length - 1);
-  const liveLabel = loading ? "responding..." : user ? "synced" : "ready";
-  const liveHint = user ? "cloud memory on" : "local memory";
-  const composerPlaceholder = placeholderByMood[mood];
+  const visibleMessageCount = Math.max(0, messages.filter((m) => m.id !== "welcome").length);
+  const liveLabel = loading ? "responding..." : hasConversationStarted ? "listening" : "ready";
+  const liveSub = loading
+    ? "reframing your thought"
+    : hasConversationStarted
+      ? memorySummary
+        ? "memory attached"
+        : "holding context"
+      : "waiting for the first thought";
+  const composerPlaceholder = moodPlaceholders[mood];
   const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud save active" : "private draft";
 
   useEffect(() => {
@@ -1259,13 +1243,9 @@ export default function Page() {
     try {
       const draft = loadDraft(STORAGE_KEY);
       if (draft) {
-        if (Array.isArray(draft.messages) && draft.messages.length > 0) {
-          setMessages(draft.messages.slice(-MAX_MESSAGES));
-        }
+        if (Array.isArray(draft.messages) && draft.messages.length > 0) setMessages(draft.messages.slice(-MAX_MESSAGES));
         if (typeof draft.input === "string") setInput(draft.input);
-        if (draft.mood && ["calm", "honest", "direct", "wise"].includes(draft.mood)) {
-          setMood(draft.mood as Mood);
-        }
+        if (draft.mood && ["calm", "honest", "direct", "wise"].includes(draft.mood)) setMood(draft.mood as Mood);
         if (typeof draft.isPro === "boolean") setIsPro(draft.isPro);
         if (draft.usage) setUsage(normalizeUsage(draft.usage));
       }
@@ -1305,9 +1285,7 @@ export default function Page() {
   useEffect(() => {
     const derived = buildMemorySummary(messages);
     setMemorySummary(derived);
-    if (user?.email) {
-      window.localStorage.setItem(memoryKey, derived);
-    }
+    if (user?.email) window.localStorage.setItem(memoryKey, derived);
   }, [messages, memoryKey, user?.email]);
 
   useEffect(() => {
@@ -1331,7 +1309,7 @@ export default function Page() {
 
     void hydrate();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         void syncSession(null);
         return;
@@ -1342,16 +1320,20 @@ export default function Page() {
       }, 0);
     });
 
-    return () => subscription.subscription.unsubscribe();
+    return () => authListener.subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const styles = useMemo(() => createStyles(mobile, isPro), [mobile, isPro]);
+  const styles = useMemo(() => createStyles(mobile, isPro, hasConversationStarted, loading), [
+    mobile,
+    isPro,
+    hasConversationStarted,
+    loading,
+  ]);
 
   function incrementUsage() {
     const today = todayKey();
-    const nextUsage =
-      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
+    const nextUsage = usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
     setUsage(nextUsage);
     return nextUsage;
   }
@@ -1368,9 +1350,7 @@ export default function Page() {
           setMessages([WELCOME_MESSAGE]);
         }
         if (typeof guestDraft.input === "string") setInput(guestDraft.input);
-        if (guestDraft.mood && ["calm", "honest", "direct", "wise"].includes(guestDraft.mood)) {
-          setMood(guestDraft.mood as Mood);
-        }
+        if (guestDraft.mood && ["calm", "honest", "direct", "wise"].includes(guestDraft.mood)) setMood(guestDraft.mood as Mood);
         if (typeof guestDraft.isPro === "boolean") setIsPro(guestDraft.isPro);
         if (guestDraft.usage) setUsage(normalizeUsage(guestDraft.usage));
       }
@@ -1383,15 +1363,9 @@ export default function Page() {
     setEmailInput(nextUser.email ?? "");
 
     const { profile, messages: cloudMessages } = await loadCloudState(nextUser.id);
+    if (cloudMessages.length > 0) setMessages(cloudMessages.slice(-MAX_MESSAGES));
 
-    if (cloudMessages.length > 0) {
-      setMessages(cloudMessages.slice(-MAX_MESSAGES));
-    }
-
-    const cloudMemory =
-      profile?.memory_summary?.trim() ||
-      buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
-
+    const cloudMemory = profile?.memory_summary?.trim() || buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
     if (cloudMemory) {
       setMemorySummary(cloudMemory);
       window.localStorage.setItem(profileToMemoryKey(nextUser.email), cloudMemory);
@@ -1418,9 +1392,7 @@ export default function Page() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
-      },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/` },
     });
 
     if (error) {
@@ -1434,6 +1406,26 @@ export default function Page() {
     setEmailCooldownUntilState(until);
     setLoginStatus("Check your email for the sign-in link.");
     setSendingEmail(false);
+  }
+
+  async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
+    if (!supabase) return;
+
+    const now = new Date().toISOString();
+
+    const insertRes = await supabase.from("messages").insert([
+      { user_id: user.id, role: "me", text: userText },
+      { user_id: user.id, role: "future me", text: assistantText },
+    ]);
+    if (insertRes.error) console.error(insertRes.error);
+
+    const profileRes = await supabase.from("profiles").upsert({
+      user_id: user.id,
+      email: user.email ?? null,
+      memory_summary: memorySummary,
+      last_seen_at: now,
+    });
+    if (profileRes.error) console.error(profileRes.error);
   }
 
   function continueFromYesterday() {
@@ -1476,7 +1468,6 @@ export default function Page() {
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
-
     if (!isPro) incrementUsage();
 
     const startedAt = Date.now();
@@ -1496,8 +1487,7 @@ export default function Page() {
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant =
-        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
 
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
@@ -1505,9 +1495,7 @@ export default function Page() {
           : fallbackReply(trimmed, mood, isPro, lastAssistant);
 
       const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
-      if (remaining > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remaining));
-      }
+      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
 
       const assistantMessage: Message = {
         id: uid(),
@@ -1522,14 +1510,10 @@ export default function Page() {
       setMemoryPulse(true);
       window.setTimeout(() => setMemoryPulse(false), 1400);
 
-      if (user) {
-        await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
-      }
+      if (user) await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
     } catch {
       const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
-      if (remaining > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remaining));
-      }
+      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
 
       const replyText = fallbackReply(trimmed, mood, isPro);
       const assistantMessage: Message = {
@@ -1545,9 +1529,7 @@ export default function Page() {
       setMemoryPulse(true);
       window.setTimeout(() => setMemoryPulse(false), 1400);
 
-      if (user) {
-        await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
-      }
+      if (user) await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
     } finally {
       setLoading(false);
       setTimeout(() => textareaRef.current?.focus(), 0);
@@ -1571,22 +1553,14 @@ export default function Page() {
   }
 
   async function shareConversation() {
-    const transcript = messages
-      .map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`)
-      .join("\n\n");
+    const transcript = messages.map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`).join("\n\n");
 
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: "Future Me",
-          text: transcript,
-        });
+        await navigator.share({ title: "Future Me", text: transcript });
         return;
       }
-
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(transcript);
-      }
+      if (navigator.clipboard) await navigator.clipboard.writeText(transcript);
     } catch {
       // ignore
     }
@@ -1610,22 +1584,12 @@ export default function Page() {
     }
   };
 
-  useEffect(() => {
-    if (!textareaRef.current) return;
-    textareaRef.current.style.height = "auto";
-    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
-  }, [input]);
-
   return (
     <main style={styles.page}>
       <style jsx global>{`
-        :root {
-          color-scheme: light;
-        }
+        :root { color-scheme: light; }
 
-        * {
-          box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
         html,
         body {
@@ -1647,18 +1611,14 @@ export default function Page() {
         }
 
         button,
-        textarea {
-          font: inherit;
-        }
+        textarea { font: inherit; }
 
         button {
           cursor: pointer;
           -webkit-tap-highlight-color: transparent;
         }
 
-        textarea {
-          outline: none;
-        }
+        textarea { outline: none; }
 
         ::selection {
           background: rgba(16, 24, 38, 0.14);
@@ -1666,30 +1626,18 @@ export default function Page() {
         }
 
         @keyframes floatIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px) scale(0.99);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
+          from { opacity: 0; transform: translateY(10px) scale(0.99); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         @keyframes pulse {
-          0%,
-          100% {
-            opacity: 0.45;
-          }
-          50% {
-            opacity: 1;
-          }
+          0%, 100% { opacity: 0.45; }
+          50% { opacity: 1; }
         }
       `}</style>
 
-      <div style={styles.ambientGlowA} />
-      <div style={styles.ambientGlowB} />
-      <div style={styles.accountGlow} />
+      <div style={styles.glowA} />
+      <div style={styles.glowB} />
 
       {showSaveSheet && <div style={styles.sheetBackdrop} onClick={() => setShowSaveSheet(false)} />}
       {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
@@ -1699,9 +1647,7 @@ export default function Page() {
         <aside style={styles.sheet}>
           <div>
             <div style={styles.sheetTitle}>Save with email</div>
-            <div style={styles.sheetSub}>
-              Enter your email to send yourself a magic link and save this conversation.
-            </div>
+            <div style={styles.sheetSub}>Enter your email to send yourself a magic link and save this conversation.</div>
           </div>
 
           <input
@@ -1721,11 +1667,15 @@ export default function Page() {
           />
 
           <button
-            style={{ ...styles.sheetPrimary, opacity: emailDisabled ? 0.6 : 1 }}
+            style={{ ...styles.sheetPrimary, opacity: emailCooldownUntil > Date.now() || sendingEmail ? 0.6 : 1 }}
             onClick={() => void signInWithEmail()}
-            disabled={emailDisabled}
+            disabled={sendingEmail || emailCooldownUntil > Date.now()}
           >
-            {sendingEmail ? "Sending..." : cooldownLeftMs > 0 ? `Wait ${cooldownLeftSec}s` : "Send magic link"}
+            {sendingEmail
+              ? "Sending..."
+              : emailCooldownUntil > Date.now()
+                ? `Wait ${Math.ceil((emailCooldownUntil - Date.now()) / 1000)}s`
+                : "Send magic link"}
           </button>
 
           <button style={styles.sheetSecondary} onClick={() => setShowSaveSheet(false)}>
@@ -1744,23 +1694,11 @@ export default function Page() {
           </div>
 
           <div style={styles.sheetGroup}>
-            <button style={styles.sheetButton} onClick={startOver}>
-              Start over
-            </button>
-            <button style={styles.sheetButton} onClick={shareConversation}>
-              Share conversation
-            </button>
-            <button style={styles.sheetButton} onClick={openUpgrade}>
-              Upgrade to Pro
-            </button>
-            {user ? (
-              <button style={styles.sheetButton} onClick={() => void signOut()}>
-                Sign out
-              </button>
-            ) : null}
-            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
-              Close
-            </button>
+            <button style={styles.sheetButton} onClick={startOver}>Start over</button>
+            <button style={styles.sheetButton} onClick={shareConversation}>Share conversation</button>
+            <button style={styles.sheetButton} onClick={openUpgrade}>Upgrade to Pro</button>
+            {user ? <button style={styles.sheetButton} onClick={() => void signOut()}>Sign out</button> : null}
+            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>Close</button>
           </div>
         </aside>
       )}
@@ -1770,8 +1708,7 @@ export default function Page() {
           <div style={styles.paywallHeader}>
             <div style={styles.paywallTitle}>Future Me Pro</div>
             <div style={styles.paywallSub}>
-              More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your
-              story.
+              More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your story.
             </div>
           </div>
 
@@ -1780,35 +1717,17 @@ export default function Page() {
           <div style={styles.featureCard}>
             <div style={styles.paywallSub}>What changes in Pro</div>
             <div style={styles.featureList}>
-              <div style={styles.featureItem}>
-                <span style={styles.featureDot} />
-                Longer memory and fewer generic replies.
-              </div>
-              <div style={styles.featureItem}>
-                <span style={styles.featureDot} />
-                Mood modes that actually change the tone.
-              </div>
-              <div style={styles.featureItem}>
-                <span style={styles.featureDot} />
-                Unlimited messages and longer conversations.
-              </div>
-              <div style={styles.featureItem}>
-                <span style={styles.featureDot} />
-                Better sharing and a more personal feel.
-              </div>
+              <div style={styles.featureItem}><span style={styles.featureDot} /> Longer memory and fewer generic replies.</div>
+              <div style={styles.featureItem}><span style={styles.featureDot} /> Mood modes that actually change the tone.</div>
+              <div style={styles.featureItem}><span style={styles.featureDot} /> Unlimited messages and longer conversations.</div>
+              <div style={styles.featureItem}><span style={styles.featureDot} /> Better sharing and a more personal feel.</div>
             </div>
           </div>
 
           <div style={styles.paywallButtons}>
-            <button style={styles.proButton} onClick={() => setIsPro(true)}>
-              Unlock demo Pro
-            </button>
-            <button style={styles.ghostButton} onClick={shareConversation}>
-              Share conversation
-            </button>
-            <button style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>
-              Not now
-            </button>
+            <button style={styles.proButton} onClick={() => setIsPro(true)}>Unlock demo Pro</button>
+            <button style={styles.ghostButton} onClick={shareConversation}>Share conversation</button>
+            <button style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>Not now</button>
           </div>
 
           <div style={styles.hintLine}>
@@ -1819,26 +1738,22 @@ export default function Page() {
 
       <div style={styles.shell}>
         <header style={styles.topBar}>
-          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
-            ≡
-          </button>
+          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>≡</button>
 
           <div style={styles.topTitle}>
             <div style={styles.brand}>Future Me</div>
             <div style={styles.brandSub}>{user ? "synced cloud memory" : "guest mode · local memory"}</div>
           </div>
 
-          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
-            ⋯
-          </button>
+          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>⋯</button>
         </header>
 
         {!hasConversationStarted ? (
-          <section style={styles.heroCard}>
+          <section style={styles.hero}>
             <div style={styles.heroShine} />
             <div style={styles.heroTop}>
-              <span style={styles.heroBadge}>Future Me AI</span>
-              <span style={styles.heroBadgeAccent}>{user ? "Cloud synced" : "Private draft"}</span>
+              <span style={styles.badge}>Future Me AI</span>
+              <span style={styles.badgeAccent}>{user ? "Cloud synced" : "Private draft"}</span>
             </div>
 
             <div style={styles.heroTitle}>Your future self, but sharper.</div>
@@ -1862,59 +1777,60 @@ export default function Page() {
             </div>
           </section>
         ) : (
-          <section style={styles.heroCompact}>
+          <section style={styles.compactHero}>
             <div style={styles.heroTop}>
-              <span style={styles.heroBadge}>Conversation in motion</span>
-              <span style={styles.heroBadgeAccent}>{memoryBadge}</span>
+              <span style={styles.badge}>Conversation in motion</span>
+              <span style={styles.badgeAccent}>{memoryBadge}</span>
             </div>
 
-            <div style={styles.heroCompactTitle}>The thread is alive.</div>
-            <div style={styles.heroCompactSub}>
-              You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and keep
-              the story moving.
+            <div style={styles.compactTitle}>The thread is alive.</div>
+            <div style={styles.compactSub}>
+              You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and keep the story moving.
             </div>
 
             <div style={styles.compactActionRow}>
               {memorySummary ? (
-                <button style={styles.compactButton} onClick={continueFromYesterday}>
-                  Continue from yesterday
-                </button>
+                <button style={styles.compactButton} onClick={continueFromYesterday}>Continue from yesterday</button>
               ) : (
-                <button style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>
-                  Keep writing
-                </button>
+                <button style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>Keep writing</button>
               )}
-              <button style={styles.compactGhost} onClick={() => setMenuOpen(true)}>
-                Open actions
-              </button>
+              <button style={styles.compactGhost} onClick={() => setMenuOpen(true)}>Open actions</button>
             </div>
           </section>
         )}
 
         <div style={styles.statusRow}>
           <span style={styles.pill}>
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: 999,
-                background: isPro ? "#4caf7a" : "#8d6b3d",
-              }}
-            />
+            <span style={{ width: 7, height: 7, borderRadius: 999, background: isPro ? "#4caf7a" : "#8d6b3d" }} />
             {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
           </span>
           <span style={styles.pill}>{user ? "synced to cloud" : "guest mode"}</span>
           <span style={styles.pill}>{visibleMessageCount} messages</span>
           {!user ? (
-            <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
-              Save with email
-            </button>
+            <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>Save with email</button>
           ) : (
-            <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>
-              Account
-            </button>
+            <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>Account</button>
           )}
         </div>
+
+        <section style={styles.aiPanel}>
+          <div style={styles.aiHeader}>
+            <div style={styles.aiHeaderLeft}>
+              <div style={styles.aiDot} />
+              <div style={{ minWidth: 0 }}>
+                <div style={styles.aiTitle}>AI is {liveLabel}</div>
+                <div style={styles.aiSub}>{liveSub}</div>
+              </div>
+            </div>
+            <span style={styles.aiPill}>{moodHints[mood]}</span>
+          </div>
+
+          <div style={styles.aiChips}>
+            <span style={styles.aiChip}>memory {memorySummary ? "live" : "empty"}</span>
+            <span style={styles.aiChip}>session {user ? "cloud" : "local"}</span>
+            <span style={styles.aiChip}>mode {isPro ? "pro" : "free"}</span>
+          </div>
+        </section>
 
         <div style={styles.moodRow}>
           {(Object.keys(moodLabels) as Mood[]).map((item) => (
@@ -1944,7 +1860,7 @@ export default function Page() {
         ) : null}
 
         <section style={styles.threadCard}>
-          <div style={styles.threadCardGlow} />
+          <div style={styles.threadGlow} />
           <div style={styles.threadHeader}>
             <div style={styles.threadLeft}>
               <div style={styles.avatar}>FM</div>
@@ -1964,28 +1880,20 @@ export default function Page() {
             <div style={styles.stream}>
               {messages.map((message) => {
                 const isUser = message.role === "me";
-                const roleLabel = isUser ? "You" : "Future Me";
-                const bubbleStyle = isUser ? styles.meBubble : styles.futureMeBubble;
                 const roleStyle = isUser ? { ...styles.messageRole, ...styles.messageRoleMe } : styles.messageRole;
-
                 return (
                   <div
                     key={message.id}
                     style={{
-                      display: "flex",
-                      width: "100%",
+                      ...styles.messageRow,
                       justifyContent: isUser ? "flex-end" : "flex-start",
                       animation: "floatIn 220ms ease both",
                     }}
                   >
-                    <article style={{ ...styles.messageBubble, ...bubbleStyle }}>
+                    <article style={{ ...styles.messageBubble, ...(isUser ? styles.meBubble : styles.futureMeBubble) }}>
                       <div style={styles.messageTop}>
-                        <span style={roleStyle}>{roleLabel}</span>
-                        <button
-                          type="button"
-                          style={styles.copyButton}
-                          onClick={() => void copyMessage(message.text, message.id)}
-                        >
+                        <span style={roleStyle}>{isUser ? "You" : "Future Me"}</span>
+                        <button type="button" style={styles.copyButton} onClick={() => void copyMessage(message.text, message.id)}>
                           {copiedId === message.id ? "Copied" : "Copy"}
                         </button>
                       </div>
@@ -2038,8 +1946,7 @@ export default function Page() {
           </div>
 
           <div style={styles.helper}>
-            Press Enter to send · Shift+Enter for a new line ·{" "}
-            {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
+            Press Enter to send · Shift+Enter for a new line · {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
           </div>
         </section>
       </div>
