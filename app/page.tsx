@@ -2,11 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import {
-  createClient,
-  type SupabaseClient,
-  type User
-} from "@supabase/supabase-js";
+import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 type Role = "me" | "future me";
 type Mood = "calm" | "honest" | "direct" | "wise";
@@ -158,11 +154,14 @@ const supabase: SupabaseClient | null = hasSupabaseEnv
 
 function readDraft(key: string): PersistedConversation | null {
   if (typeof window === "undefined") return null;
+
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
+
     const parsed = JSON.parse(raw) as PersistedConversation;
     if (!parsed || !Array.isArray(parsed.messages)) return null;
+
     return parsed;
   } catch {
     return null;
@@ -345,15 +344,17 @@ export default function Page() {
       await supabase.auth.signOut();
     }
     setUser(null);
-    setMessages(readDraft(GUEST_KEY)?.messages?.length ? readDraft(GUEST_KEY)!.messages : [welcomeMessage]);
-    setInput(readDraft(GUEST_KEY)?.input ?? "");
-    setMood(readDraft(GUEST_KEY)?.mood ?? "honest");
+    const guest = readDraft(GUEST_KEY);
+    setMessages(guest?.messages?.length ? guest.messages : [welcomeMessage]);
+    setInput(guest?.input ?? "");
+    setMood(guest?.mood ?? "honest");
     setShowSaveSheet(false);
     setLoginStatus("");
   }
 
   async function insertMessage(userId: string, role: Role, text: string) {
     if (!supabase) return;
+
     const { error } = await supabase.from("messages").insert({
       user_id: userId,
       role,
