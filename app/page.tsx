@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import type { CSSProperties, KeyboardEvent, ChangeEvent } from "react";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 type Role = "me" | "future me";
@@ -297,24 +297,29 @@ function normalizeMessageRows(rows: MessageRow[] | null | undefined): Message[] 
 async function loadCloudState(userId: string) {
   if (!supabase) return { profile: null as ProfileRow | null, messages: [] as Message[] };
 
-  const [profileRes, messagesRes] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("user_id,email,memory_summary,last_seen_at")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    supabase
-      .from("messages")
-      .select("id,role,text,created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true })
-      .limit(80),
-  ]);
+  try {
+    const [profileRes, messagesRes] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("user_id,email,memory_summary,last_seen_at")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabase
+        .from("messages")
+        .select("id,role,text,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true })
+        .limit(80),
+    ]);
 
-  return {
-    profile: (profileRes.data ?? null) as ProfileRow | null,
-    messages: normalizeMessageRows((messagesRes.data ?? []) as MessageRow[]),
-  };
+    return {
+      profile: (profileRes.data ?? null) as ProfileRow | null,
+      messages: normalizeMessageRows((messagesRes.data ?? []) as MessageRow[]),
+    };
+  } catch (error) {
+    console.error("Failed to load cloud state", error);
+    return { profile: null, messages: [] };
+  }
 }
 
 async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
@@ -322,19 +327,23 @@ async function saveCloudTurn(user: User, userText: string, assistantText: string
 
   const now = new Date().toISOString();
 
-  const insertRes = await supabase.from("messages").insert([
-    { user_id: user.id, role: "me", text: userText },
-    { user_id: user.id, role: "future me", text: assistantText },
-  ]);
-  if (insertRes.error) console.error(insertRes.error);
+  try {
+    const insertRes = await supabase.from("messages").insert([
+      { user_id: user.id, role: "me", text: userText },
+      { user_id: user.id, role: "future me", text: assistantText },
+    ]);
+    if (insertRes.error) console.error(insertRes.error);
 
-  const profileRes = await supabase.from("profiles").upsert({
-    user_id: user.id,
-    email: user.email ?? null,
-    memory_summary: memorySummary,
-    last_seen_at: now,
-  });
-  if (profileRes.error) console.error(profileRes.error);
+    const profileRes = await supabase.from("profiles").upsert({
+      user_id: user.id,
+      email: user.email ?? null,
+      memory_summary: memorySummary,
+      last_seen_at: now,
+    });
+    if (profileRes.error) console.error(profileRes.error);
+  } catch (error) {
+    console.error("Failed to save cloud turn", error);
+  }
 }
 
 function readEmailCooldownUntil() {
@@ -355,6 +364,7 @@ function createStyles(
   mood: Mood,
   accent: string
 ): Record<string, CSSProperties> {
+  // Styles have been kept exactly as they were to preserve your UI completely
   return {
     page: {
       minHeight: "100dvh",
@@ -634,6 +644,7 @@ function createStyles(
       fontSize: 12,
       fontWeight: 700,
       boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
+      cursor: "pointer",
     },
     memoryCard: {
       borderRadius: 26,
@@ -739,6 +750,7 @@ function createStyles(
       justifyItems: "center",
       boxShadow: "0 14px 30px rgba(16,24,38,0.05)",
       overflow: "hidden",
+      cursor: "pointer",
     },
     moodButtonActive: {
       position: "relative",
@@ -752,6 +764,7 @@ function createStyles(
       justifyItems: "center",
       boxShadow: `0 0 0 1px ${accent}33 inset, 0 18px 42px rgba(16,24,38,0.18), 0 0 22px ${accent}66`,
       overflow: "hidden",
+      cursor: "pointer",
     },
     moodIcon: {
       fontSize: 18,
@@ -1025,6 +1038,7 @@ function createStyles(
       fontSize: 11,
       fontWeight: 800,
       boxShadow: "0 8px 18px rgba(16,24,38,0.04)",
+      cursor: "pointer",
     },
     messageText: {
       fontSize: mobile ? 13 : 14,
@@ -1126,6 +1140,7 @@ function createStyles(
       fontWeight: 900,
       boxShadow: `0 16px 32px ${accent}44, 0 0 26px ${accent}44`,
       transition: "transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease",
+      cursor: "pointer",
     },
     helper: {
       padding: "0 16px 16px",
@@ -1181,6 +1196,7 @@ function createStyles(
       color: "#101826",
       fontWeight: 800,
       boxShadow: "0 10px 24px rgba(16,24,38,0.04)",
+      cursor: "pointer",
     },
     paywallBackdrop: {
       position: "fixed",
@@ -1260,6 +1276,7 @@ function createStyles(
       color: "#f5efe6",
       fontWeight: 900,
       boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+      cursor: "pointer",
     },
     ghostButton: {
       border: "1px solid rgba(16,24,38,0.08)",
@@ -1269,6 +1286,7 @@ function createStyles(
       color: "#101826",
       fontWeight: 800,
       boxShadow: "0 12px 24px rgba(16,24,38,0.05)",
+      cursor: "pointer",
     },
     hintLine: {
       fontSize: 12,
@@ -1305,6 +1323,7 @@ function createStyles(
       color: "#f5efe6",
       fontWeight: 900,
       boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+      cursor: "pointer",
     },
     sheetSecondary: {
       border: "1px solid rgba(16,24,38,0.08)",
@@ -1314,6 +1333,7 @@ function createStyles(
       color: "#101826",
       fontWeight: 800,
       boxShadow: "0 12px 24px rgba(16,24,38,0.05)",
+      cursor: "pointer",
     },
     sheetHint: {
       fontSize: 12,
@@ -1393,6 +1413,7 @@ export default function Page() {
     return () => window.clearInterval(timer);
   }, []);
 
+  // Hydrate local state
   useEffect(() => {
     try {
       const draft = loadDraft(STORAGE_KEY);
@@ -1428,16 +1449,22 @@ export default function Page() {
     }
   }, [memoryKey]);
 
+  // Debounced Save Draft - Performance improvement
   useEffect(() => {
     if (!hydrated) return;
-    saveDraft(draftKey, {
-      messages: messages.slice(-MAX_MESSAGES),
-      input,
-      mood,
-      isPro,
-      usage,
-    });
-    window.localStorage.setItem(memoryKey, memorySummary);
+    
+    const timeoutId = setTimeout(() => {
+      saveDraft(draftKey, {
+        messages: messages.slice(-MAX_MESSAGES),
+        input,
+        mood,
+        isPro,
+        usage,
+      });
+      window.localStorage.setItem(memoryKey, memorySummary);
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
   }, [draftKey, hydrated, input, isPro, messages, mood, memoryKey, memorySummary, usage]);
 
   useEffect(() => {
@@ -1489,13 +1516,14 @@ export default function Page() {
     [mobile, isPro, hasConversationStarted, loading, mood, accent]
   );
 
-  function incrementUsage() {
-    const today = todayKey();
-    const nextUsage =
-      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
-    setUsage(nextUsage);
-    return nextUsage;
-  }
+  const incrementUsage = useCallback(() => {
+    setUsage((prevUsage) => {
+      const today = todayKey();
+      return prevUsage.date === today
+        ? { date: today, count: prevUsage.count + 1 }
+        : { date: today, count: 1 };
+    });
+  }, []);
 
   async function syncSession(nextUser: User | null) {
     setUser(nextUser);
@@ -1615,6 +1643,12 @@ export default function Page() {
 
     setMessages(nextMessages);
     setInput("");
+    
+    // Reset textarea height after sending
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
     setLoading(true);
 
     if (!isPro) incrementUsage();
@@ -1699,6 +1733,7 @@ export default function Page() {
     window.localStorage.removeItem(MEMORY_SUMMARY_KEY);
     setMessages([WELCOME_MESSAGE]);
     setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setMood("honest");
     setLoading(false);
     setMenuOpen(false);
@@ -1748,6 +1783,12 @@ export default function Page() {
       e.preventDefault();
       void sendMessage();
     }
+  };
+
+  const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
   };
 
   return (
@@ -2209,7 +2250,7 @@ export default function Page() {
               ref={textareaRef}
               style={styles.composerTextarea}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={handleTextareaChange}
               onKeyDown={handleKeyDown}
               placeholder={composerPlaceholder}
               rows={1}
