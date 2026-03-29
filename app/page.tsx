@@ -63,6 +63,13 @@ const moodLabels: Record<Mood, string> = {
   wise: "Wise",
 };
 
+const moodIcons: Record<Mood, string> = {
+  calm: "☾",
+  honest: "☺",
+  direct: "⚡",
+  wise: "◉",
+};
+
 const moodHints: Record<Mood, string> = {
   calm: "slow the noise down",
   honest: "say the real thing",
@@ -117,7 +124,9 @@ function normalizeUsage(value: unknown): Usage {
     typeof (value as Usage).count === "number"
   ) {
     const usage = value as Usage;
-    if (usage.date === today) return { date: today, count: Math.max(0, usage.count) };
+    if (usage.date === today) {
+      return { date: today, count: Math.max(0, usage.count) };
+    }
   }
   return defaultUsage();
 }
@@ -244,7 +253,9 @@ function buildMemoryPrompt(messages: Message[], mood: Mood, memorySummary = "") 
     .map((m) => m.text)
     .join(" | ");
 
-  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`.slice(0, 240);
+  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${
+    memorySummary ? ` | Summary: ${memorySummary}` : ""
+  }`.slice(0, 240);
 }
 
 function loadDraft(key: string): PersistedState | null {
@@ -345,14 +356,13 @@ function createStyles(
   loading: boolean,
   mood: Mood
 ): Record<string, CSSProperties> {
-  const moodAccent: Record<Mood, string> = {
-    calm: "#8fb7ff",
-    honest: "#f3b37a",
-    direct: "#9ed2bf",
-    wise: "#c7a2ff",
+  const accentMap: Record<Mood, string> = {
+    calm: "#5b8def",
+    honest: "#f3a85f",
+    direct: "#3bc6a1",
+    wise: "#8f67f2",
   };
-
-  const accent = moodAccent[mood];
+  const accent = accentMap[mood];
 
   return {
     page: {
@@ -363,7 +373,7 @@ function createStyles(
       WebkitOverflowScrolling: "touch",
       padding: mobile ? 10 : 16,
       background:
-        "radial-gradient(circle at 10% 10%, rgba(134, 174, 255, 0.30), transparent 24%), radial-gradient(circle at 90% 15%, rgba(255, 183, 191, 0.26), transparent 22%), radial-gradient(circle at 50% 90%, rgba(117, 231, 193, 0.18), transparent 26%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
+        "radial-gradient(circle at 50% 10%, rgba(255,255,255,0.92), rgba(255,255,255,0.0) 30%), radial-gradient(circle at 20% 20%, rgba(155,120,255,0.16), transparent 28%), radial-gradient(circle at 85% 18%, rgba(255,194,117,0.14), transparent 24%), linear-gradient(180deg, #f6f0e8 0%, #ebe4d8 100%)",
       color: "#101826",
       fontFamily:
         'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -377,29 +387,29 @@ function createStyles(
       display: "flex",
       flexDirection: "column",
       gap: 12,
-      paddingBottom: 20,
+      paddingBottom: 18,
       position: "relative",
       zIndex: 1,
     },
     glowA: {
       position: "fixed",
-      inset: "auto auto 8% -8%",
-      width: 260,
-      height: 260,
+      inset: "auto auto 6% -8%",
+      width: 280,
+      height: 280,
       borderRadius: 999,
-      background: "radial-gradient(circle, rgba(255,255,255,0.52), rgba(255,255,255,0))",
-      filter: "blur(18px)",
+      background: "radial-gradient(circle, rgba(255,255,255,0.60), rgba(255,255,255,0))",
+      filter: "blur(20px)",
       pointerEvents: "none",
       zIndex: 0,
     },
     glowB: {
       position: "fixed",
       inset: "8% -6% auto auto",
-      width: 320,
-      height: 320,
+      width: 330,
+      height: 330,
       borderRadius: 999,
       background: "radial-gradient(circle, rgba(255,255,255,0.36), rgba(255,255,255,0))",
-      filter: "blur(22px)",
+      filter: "blur(24px)",
       pointerEvents: "none",
       zIndex: 0,
     },
@@ -409,11 +419,11 @@ function createStyles(
       justifyContent: "space-between",
       gap: 12,
       padding: "10px 10px",
-      background: "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.56))",
-      borderRadius: 22,
+      background: "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.56))",
+      borderRadius: 24,
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 16px 46px rgba(16,24,38,0.08)",
-      backdropFilter: "blur(20px)",
+      backdropFilter: "blur(18px)",
     },
     topTitle: {
       display: "flex",
@@ -455,21 +465,21 @@ function createStyles(
       padding: mobile ? 18 : 22,
       background: hasConversationStarted
         ? "linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.62))"
-        : "linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.60))",
+        : "linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
-      backdropFilter: "blur(20px)",
+      backdropFilter: "blur(18px)",
       overflow: "hidden",
-      transition: "all 0.45s cubic-bezier(0.22, 1, 0.36, 1)",
       position: "relative",
+      transition: "all 0.45s cubic-bezier(0.22, 1, 0.36, 1)",
     },
     heroShine: {
       position: "absolute",
-      inset: "-40% auto auto 55%",
+      inset: "-40% auto auto 54%",
       width: 260,
       height: 260,
       borderRadius: 999,
-      background: `radial-gradient(circle, ${accent}40, ${accent}00)`,
+      background: `radial-gradient(circle, ${accent}44, ${accent}00)`,
       filter: "blur(8px)",
       pointerEvents: "none",
     },
@@ -480,6 +490,8 @@ function createStyles(
       gap: 12,
       flexWrap: "wrap",
       marginBottom: 12,
+      position: "relative",
+      zIndex: 1,
     },
     badge: {
       display: "inline-flex",
@@ -487,12 +499,13 @@ function createStyles(
       gap: 8,
       padding: "8px 12px",
       borderRadius: 999,
-      background: "rgba(16,24,38,0.06)",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.72))",
       border: "1px solid rgba(16,24,38,0.06)",
       fontSize: 12,
       fontWeight: 800,
       letterSpacing: "0.02em",
       width: "fit-content",
+      boxShadow: "0 8px 20px rgba(16,24,38,0.04)",
     },
     badgeAccent: {
       display: "inline-flex",
@@ -500,39 +513,46 @@ function createStyles(
       gap: 8,
       padding: "8px 12px",
       borderRadius: 999,
-      background: isPro ? "rgba(76,175,122,0.12)" : "rgba(141,107,61,0.10)",
+      background: isPro
+        ? "linear-gradient(180deg, rgba(76,175,122,0.16), rgba(76,175,122,0.10))"
+        : "linear-gradient(180deg, rgba(141,107,61,0.14), rgba(141,107,61,0.08))",
       border: "1px solid rgba(16,24,38,0.06)",
       color: isPro ? "#206f47" : "#7c5a2f",
       fontSize: 12,
       fontWeight: 800,
       width: "fit-content",
+      boxShadow: "0 8px 20px rgba(16,24,38,0.04)",
     },
     heroTitle: {
-      fontSize: mobile ? 28 : 42,
+      fontSize: mobile ? 30 : 42,
       fontWeight: 950,
       letterSpacing: "-0.06em",
-      lineHeight: 0.98,
+      lineHeight: 0.96,
       maxWidth: 560,
       marginBottom: 10,
-      transition: "all 0.35s ease",
+      position: "relative",
+      zIndex: 1,
     },
     heroSub: {
       fontSize: mobile ? 14 : 15,
       lineHeight: 1.6,
       color: "rgba(16,24,38,0.68)",
       maxWidth: 720,
-      transition: "opacity 0.35s ease, transform 0.35s ease",
+      position: "relative",
+      zIndex: 1,
     },
     heroMetrics: {
       display: "grid",
       gridTemplateColumns: mobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))",
       gap: 10,
       marginTop: 18,
+      position: "relative",
+      zIndex: 1,
     },
     metricCard: {
       borderRadius: 22,
       padding: 14,
-      background: "rgba(255,255,255,0.64)",
+      background: "rgba(255,255,255,0.70)",
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
     },
@@ -550,10 +570,10 @@ function createStyles(
     compactHero: {
       borderRadius: 30,
       padding: mobile ? 18 : 22,
-      background: "linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.60))",
+      background: "linear-gradient(135deg, rgba(255,255,255,0.86), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
-      backdropFilter: "blur(20px)",
+      backdropFilter: "blur(18px)",
       overflow: "hidden",
       position: "relative",
     },
@@ -624,21 +644,162 @@ function createStyles(
       fontWeight: 700,
       boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
     },
-    aiPanel: {
-      borderRadius: 24,
+    memoryCard: {
+      borderRadius: 26,
+      padding: 16,
+      background:
+        "linear-gradient(180deg, rgba(52,32,40,0.94), rgba(33,24,34,0.96))",
+      border: "1px solid rgba(255,255,255,0.08)",
+      boxShadow: "0 20px 56px rgba(26,18,26,0.18)",
+      backdropFilter: "blur(18px)",
+      display: "grid",
+      gap: 12,
+    },
+    memoryHeader: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      flexWrap: "wrap",
+    },
+    memoryTitleWrap: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      minWidth: 0,
+    },
+    memoryIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 12,
+      display: "grid",
+      placeItems: "center",
+      background: "linear-gradient(180deg, rgba(255,139,214,0.24), rgba(122,93,255,0.18))",
+      color: "#f7b3ff",
+      boxShadow: "0 0 0 1px rgba(255,255,255,0.05) inset",
+      flex: "0 0 auto",
+    },
+    memoryTitle: {
+      fontSize: 15,
+      fontWeight: 900,
+      letterSpacing: "-0.03em",
+      color: "#fff",
+    },
+    memoryMeta: {
+      fontSize: 12,
+      color: "rgba(255,255,255,0.64)",
+      marginTop: 2,
+    },
+    memoryUpdated: {
+      fontSize: 12,
+      color: "rgba(255,255,255,0.66)",
+      whiteSpace: "nowrap",
+    },
+    memoryQuote: {
+      borderRadius: 20,
       padding: 14,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.76), rgba(255,255,255,0.56))",
+      background: "linear-gradient(180deg, rgba(17,14,22,0.96), rgba(28,22,30,0.96))",
+      color: "#f8f5ff",
+      border: "1px solid rgba(255,255,255,0.06)",
+      boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.02)",
+      lineHeight: 1.6,
+      fontSize: 13,
+      whiteSpace: "pre-wrap",
+    },
+    memoryGlow: {
+      position: "absolute",
+      inset: "auto auto -18% 62%",
+      width: 160,
+      height: 160,
+      borderRadius: 999,
+      background: "radial-gradient(circle, rgba(177,97,255,0.20), rgba(177,97,255,0))",
+      filter: "blur(8px)",
+      pointerEvents: "none",
+    },
+    moodSection: {
+      display: "grid",
+      gap: 8,
+    },
+    moodHeading: {
+      fontSize: 18,
+      fontWeight: 900,
+      letterSpacing: "-0.04em",
+    },
+    moodSub: {
+      fontSize: 13,
+      color: "rgba(16,24,38,0.56)",
+      lineHeight: 1.5,
+    },
+    moodRow: {
+      display: "grid",
+      gridTemplateColumns: mobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
+      gap: 10,
+    },
+    moodButton: {
+      position: "relative",
+      border: "1px solid rgba(16,24,38,0.06)",
+      borderRadius: 20,
+      padding: "14px 12px",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.66))",
+      color: "#101826",
+      display: "grid",
+      gap: 4,
+      justifyItems: "center",
+      boxShadow: "0 14px 30px rgba(16,24,38,0.05)",
+      overflow: "hidden",
+    },
+    moodButtonActive: {
+      position: "relative",
+      border: "1px solid rgba(255,255,255,0.10)",
+      borderRadius: 20,
+      padding: "14px 12px",
+      background: "linear-gradient(180deg, rgba(24,28,46,0.98), rgba(14,18,31,0.98))",
+      color: "#fff",
+      display: "grid",
+      gap: 4,
+      justifyItems: "center",
+      boxShadow: `0 0 0 1px ${accent}33 inset, 0 18px 42px rgba(16,24,38,0.18), 0 0 22px ${accent}66`,
+      overflow: "hidden",
+    },
+    moodIcon: {
+      fontSize: 18,
+      lineHeight: 1,
+    },
+    moodLabel: {
+      fontSize: 13,
+      fontWeight: 900,
+      letterSpacing: "-0.02em",
+    },
+    moodLabelSub: {
+      fontSize: 11,
+      opacity: 0.74,
+    },
+    moodGlow: {
+      position: "absolute",
+      inset: "auto -20% -30% auto",
+      width: 90,
+      height: 90,
+      borderRadius: 999,
+      background: `radial-gradient(circle, ${accent}50, ${accent}00)`,
+      filter: "blur(4px)",
+      pointerEvents: "none",
+    },
+    aiPanel: {
+      borderRadius: 26,
+      padding: 16,
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 18px 46px rgba(16,24,38,0.07)",
       backdropFilter: "blur(18px)",
       display: "grid",
-      gap: 10,
+      gap: 12,
     },
     aiHeader: {
       display: "flex",
       alignItems: "center",
-      gap: 12,
       justifyContent: "space-between",
+      gap: 12,
       flexWrap: "wrap",
     },
     aiHeaderLeft: {
@@ -651,10 +812,12 @@ function createStyles(
       width: 12,
       height: 12,
       borderRadius: 999,
-      background: loading ? "#64748b" : accent,
+      background: loading ? "#64748b" : hasConversationStarted ? "#3bc6a1" : "#8d6b3d",
       boxShadow: loading
         ? "0 0 0 6px rgba(100,116,139,0.14)"
-        : `0 0 0 6px ${accent}22`,
+        : hasConversationStarted
+          ? "0 0 0 6px rgba(59,198,161,0.14)"
+          : "0 0 0 6px rgba(141,107,61,0.14)",
       flex: "0 0 auto",
     },
     aiTitle: {
@@ -698,93 +861,12 @@ function createStyles(
       color: "rgba(16,24,38,0.74)",
       fontWeight: 700,
     },
-    moodRow: {
-      display: "flex",
-      gap: 8,
-      flexWrap: "wrap",
-    },
-    moodButton: {
-      border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.72)",
-      color: "#101826",
-      padding: "9px 13px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 700,
-      boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
-    },
-    moodButtonActive: {
-      border: "1px solid rgba(16,24,38,0.10)",
-      background: "#101826",
-      color: "#f5efe6",
-      padding: "9px 13px",
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 800,
-      boxShadow: "0 14px 32px rgba(16,24,38,0.14)",
-    },
-    moodHint: {
-      fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
-      marginTop: -2,
-      paddingLeft: 4,
-    },
-    memoryCard: {
-      borderRadius: 24,
-      padding: 14,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.70), rgba(255,255,255,0.52))",
-      border: "1px solid rgba(16,24,38,0.07)",
-      display: "grid",
-      gap: 8,
-      boxShadow: "0 18px 46px rgba(16,24,38,0.07)",
-      backdropFilter: "blur(18px)",
-    },
-    memoryHeader: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: 10,
-      flexWrap: "wrap",
-    },
-    memoryTitle: {
-      fontSize: 13,
-      fontWeight: 900,
-      letterSpacing: "-0.02em",
-      textTransform: "uppercase",
-      opacity: 0.88,
-    },
-    memoryPulse: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      padding: "7px 10px",
-      borderRadius: 999,
-      background: "rgba(76,175,122,0.12)",
-      color: "#206f47",
-      border: "1px solid rgba(16,24,38,0.06)",
-      fontSize: 12,
-      fontWeight: 800,
-    },
-    memoryText: {
-      fontSize: 13,
-      lineHeight: 1.55,
-      color: "rgba(16,24,38,0.72)",
-    },
-    memoryButton: {
-      border: 0,
-      borderRadius: 16,
-      padding: "10px 14px",
-      background: "#101826",
-      color: "#f5efe6",
-      fontWeight: 900,
-      width: "fit-content",
-      boxShadow: "0 14px 30px rgba(16,24,38,0.14)",
-    },
     threadCard: {
       display: "flex",
       flexDirection: "column",
       borderRadius: 34,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.58))",
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
       overflow: "hidden",
@@ -863,9 +945,7 @@ function createStyles(
       height: 8,
       borderRadius: 999,
       background: isPro ? "#4caf7a" : "#8d6b3d",
-      boxShadow: isPro
-        ? "0 0 0 5px rgba(76,175,122,0.16)"
-        : "0 0 0 5px rgba(141,107,61,0.14)",
+      boxShadow: isPro ? "0 0 0 5px rgba(76,175,122,0.16)" : "0 0 0 5px rgba(141,107,61,0.14)",
     },
     threadBody: {
       flex: "1 1 auto",
@@ -906,9 +986,9 @@ function createStyles(
       backdropFilter: "blur(10px)",
     },
     meBubble: {
-      background: "linear-gradient(135deg, #101826, #1c2638)",
+      background: "linear-gradient(135deg, #111827, #1f2940)",
       color: "#f5efe6",
-      boxShadow: "0 16px 34px rgba(16,24,38,0.15)",
+      boxShadow: "0 16px 34px rgba(16,24,38,0.18)",
       borderTopLeftRadius: 26,
       borderTopRightRadius: 26,
       borderBottomLeftRadius: 26,
@@ -981,7 +1061,11 @@ function createStyles(
       letterSpacing: "0.02em",
       animation: "pulse 1.3s ease-in-out infinite",
     },
-    typingDots: { display: "inline-flex", gap: 6, alignItems: "center" },
+    typingDots: {
+      display: "inline-flex",
+      gap: 6,
+      alignItems: "center",
+    },
     typingDot: {
       width: 6,
       height: 6,
@@ -993,7 +1077,8 @@ function createStyles(
     composerShell: {
       flex: "0 0 auto",
       borderRadius: 26,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.56))",
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.58))",
       border: "1px solid rgba(16,24,38,0.08)",
       boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
       backdropFilter: "blur(22px)",
@@ -1033,7 +1118,7 @@ function createStyles(
       resize: "none",
       borderRadius: 20,
       border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.90)",
+      background: "rgba(255,255,255,0.92)",
       color: "#101826",
       padding: "13px 13px",
       lineHeight: 1.45,
@@ -1043,14 +1128,14 @@ function createStyles(
       transition: "border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
     },
     sendButton: {
-      minWidth: mobile ? "100%" : 98,
+      minWidth: mobile ? "100%" : 102,
       border: 0,
       borderRadius: 20,
-      padding: "12px 14px",
-      background: "linear-gradient(180deg, #101826, #1b2636)",
-      color: "#f5efe6",
+      padding: "12px 16px",
+      background: `linear-gradient(180deg, ${accent}, ${accent}CC)`,
+      color: "#ffffff",
       fontWeight: 900,
-      boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+      boxShadow: `0 16px 32px ${accent}44, 0 0 26px ${accent}44`,
       transition: "transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease",
     },
     helper: {
@@ -1082,9 +1167,21 @@ function createStyles(
       gap: 12,
       backdropFilter: "blur(18px)",
     },
-    sheetTitle: { fontSize: 18, fontWeight: 900, letterSpacing: "-0.03em" },
-    sheetSub: { marginTop: 3, fontSize: 12, color: "rgba(16,24,38,0.56)", lineHeight: 1.5 },
-    sheetGroup: { display: "grid", gap: 8 },
+    sheetTitle: {
+      fontSize: 18,
+      fontWeight: 900,
+      letterSpacing: "-0.03em",
+    },
+    sheetSub: {
+      marginTop: 3,
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)",
+      lineHeight: 1.5,
+    },
+    sheetGroup: {
+      display: "grid",
+      gap: 8,
+    },
     sheetButton: {
       width: "100%",
       textAlign: "left",
@@ -1119,9 +1216,20 @@ function createStyles(
       gap: 12,
       backdropFilter: "blur(18px)",
     },
-    paywallHeader: { display: "grid", gap: 4 },
-    paywallTitle: { fontSize: 20, fontWeight: 950, letterSpacing: "-0.04em" },
-    paywallSub: { fontSize: 13, lineHeight: 1.5, color: "rgba(16,24,38,0.62)" },
+    paywallHeader: {
+      display: "grid",
+      gap: 4,
+    },
+    paywallTitle: {
+      fontSize: 20,
+      fontWeight: 950,
+      letterSpacing: "-0.04em",
+    },
+    paywallSub: {
+      fontSize: 13,
+      lineHeight: 1.5,
+      color: "rgba(16,24,38,0.62)",
+    },
     featureCard: {
       borderRadius: 20,
       padding: 14,
@@ -1129,7 +1237,11 @@ function createStyles(
       border: "1px solid rgba(16,24,38,0.06)",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
     },
-    featureList: { display: "grid", gap: 8, marginTop: 4 },
+    featureList: {
+      display: "grid",
+      gap: 8,
+      marginTop: 4,
+    },
     featureItem: {
       display: "flex",
       alignItems: "flex-start",
@@ -1146,7 +1258,11 @@ function createStyles(
       background: "#101826",
       flex: "0 0 auto",
     },
-    paywallButtons: { display: "flex", gap: 10, flexWrap: "wrap" },
+    paywallButtons: {
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap",
+    },
     proButton: {
       border: 0,
       borderRadius: 16,
@@ -1218,12 +1334,12 @@ function createStyles(
   };
 }
 
-function getEmailCooldownUntilValue() {
+function getEmailCooldownUntil() {
   if (typeof window === "undefined") return 0;
   return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
 }
 
-function setEmailCooldownUntilValueSafe(ts: number) {
+function setEmailCooldownUntilValue(ts: number) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
 }
@@ -1252,22 +1368,23 @@ export default function Page() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const remainingToday = usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
+  const remainingToday =
+    usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
 
   const draftKey = useMemo(() => profileToDraftKey(user?.email), [user?.email]);
   const memoryKey = useMemo(() => profileToMemoryKey(user?.email), [user?.email]);
   const hasConversationStarted = messages.some((m) => m.id !== "welcome");
   const visibleMessageCount = Math.max(0, messages.filter((m) => m.id !== "welcome").length);
-  const liveLabel = loading ? "responding..." : hasConversationStarted ? "listening" : "ready";
+  const liveLabel = loading ? "responding..." : hasConversationStarted ? "online" : "ready";
   const liveSub = loading
     ? "reframing your thought"
     : hasConversationStarted
       ? memorySummary
-        ? "memory attached"
+        ? "memory connected"
         : "holding context"
       : "waiting for the first thought";
   const composerPlaceholder = moodPlaceholders[mood];
-  const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud save active" : "private draft";
+  const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud sync on" : "private draft";
 
   useEffect(() => {
     const update = () => setMobile(window.innerWidth < 900);
@@ -1281,10 +1398,10 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    const initialCooldown = getEmailCooldownUntilValue();
+    const initialCooldown = getEmailCooldownUntil();
     setEmailCooldownUntilState(initialCooldown);
     const timer = window.setInterval(() => {
-      setEmailCooldownUntilState(getEmailCooldownUntilValue());
+      setEmailCooldownUntilState(getEmailCooldownUntil());
     }, 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -1293,9 +1410,13 @@ export default function Page() {
     try {
       const draft = loadDraft(STORAGE_KEY);
       if (draft) {
-        if (Array.isArray(draft.messages) && draft.messages.length > 0) setMessages(draft.messages.slice(-MAX_MESSAGES));
+        if (Array.isArray(draft.messages) && draft.messages.length > 0) {
+          setMessages(draft.messages.slice(-MAX_MESSAGES));
+        }
         if (typeof draft.input === "string") setInput(draft.input);
-        if (draft.mood && ["calm", "honest", "direct", "wise"].includes(draft.mood)) setMood(draft.mood as Mood);
+        if (draft.mood && ["calm", "honest", "direct", "wise"].includes(draft.mood)) {
+          setMood(draft.mood as Mood);
+        }
         if (typeof draft.isPro === "boolean") setIsPro(draft.isPro);
         if (draft.usage) setUsage(normalizeUsage(draft.usage));
       }
@@ -1335,7 +1456,9 @@ export default function Page() {
   useEffect(() => {
     const derived = buildMemorySummary(messages);
     setMemorySummary(derived);
-    if (user?.email) window.localStorage.setItem(memoryKey, derived);
+    if (user?.email) {
+      window.localStorage.setItem(memoryKey, derived);
+    }
   }, [messages, memoryKey, user?.email]);
 
   useEffect(() => {
@@ -1381,7 +1504,8 @@ export default function Page() {
 
   function incrementUsage() {
     const today = todayKey();
-    const nextUsage = usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
+    const nextUsage =
+      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
     setUsage(nextUsage);
     return nextUsage;
   }
@@ -1398,7 +1522,9 @@ export default function Page() {
           setMessages([WELCOME_MESSAGE]);
         }
         if (typeof guestDraft.input === "string") setInput(guestDraft.input);
-        if (guestDraft.mood && ["calm", "honest", "direct", "wise"].includes(guestDraft.mood)) setMood(guestDraft.mood as Mood);
+        if (guestDraft.mood && ["calm", "honest", "direct", "wise"].includes(guestDraft.mood)) {
+          setMood(guestDraft.mood as Mood);
+        }
         if (typeof guestDraft.isPro === "boolean") setIsPro(guestDraft.isPro);
         if (guestDraft.usage) setUsage(normalizeUsage(guestDraft.usage));
       }
@@ -1411,7 +1537,10 @@ export default function Page() {
     setEmailInput(nextUser.email ?? "");
 
     const { profile, messages: cloudMessages } = await loadCloudState(nextUser.id);
-    if (cloudMessages.length > 0) setMessages(cloudMessages.slice(-MAX_MESSAGES));
+
+    if (cloudMessages.length > 0) {
+      setMessages(cloudMessages.slice(-MAX_MESSAGES));
+    }
 
     const cloudMemory =
       profile?.memory_summary?.trim() ||
@@ -1432,7 +1561,7 @@ export default function Page() {
     const email = emailInput.trim().toLowerCase();
     if (!email) return;
 
-    const cooldownUntil = getEmailCooldownUntilValue();
+    const cooldownUntil = getEmailCooldownUntil();
     if (Date.now() < cooldownUntil) {
       setLoginStatus(`Wait ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s and try again.`);
       return;
@@ -1455,7 +1584,7 @@ export default function Page() {
     }
 
     const until = Date.now() + EMAIL_COOLDOWN_MS;
-    setEmailCooldownUntilValueSafe(until);
+    setEmailCooldownUntilValue(until);
     setEmailCooldownUntilState(until);
     setLoginStatus("Check your email for the sign-in link.");
     setSendingEmail(false);
@@ -1521,6 +1650,7 @@ export default function Page() {
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
+
     if (!isPro) incrementUsage();
 
     const startedAt = Date.now();
@@ -1540,7 +1670,8 @@ export default function Page() {
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const lastAssistant =
+        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
 
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
@@ -1548,7 +1679,9 @@ export default function Page() {
           : fallbackReply(trimmed, mood, isPro, lastAssistant);
 
       const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
-      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
 
       const assistantMessage: Message = {
         id: uid(),
@@ -1563,10 +1696,14 @@ export default function Page() {
       setMemoryPulse(true);
       window.setTimeout(() => setMemoryPulse(false), 1400);
 
-      if (user) await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
+      if (user) {
+        await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
+      }
     } catch {
       const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
-      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
 
       const replyText = fallbackReply(trimmed, mood, isPro);
       const assistantMessage: Message = {
@@ -1582,7 +1719,9 @@ export default function Page() {
       setMemoryPulse(true);
       window.setTimeout(() => setMemoryPulse(false), 1400);
 
-      if (user) await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
+      if (user) {
+        await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
+      }
     } finally {
       setLoading(false);
       setTimeout(() => textareaRef.current?.focus(), 0);
@@ -1612,10 +1751,16 @@ export default function Page() {
 
     try {
       if (navigator.share) {
-        await navigator.share({ title: "Future Me", text: transcript });
+        await navigator.share({
+          title: "Future Me",
+          text: transcript,
+        });
         return;
       }
-      if (navigator.clipboard) await navigator.clipboard.writeText(transcript);
+
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(transcript);
+      }
     } catch {
       // ignore
     }
@@ -1639,12 +1784,6 @@ export default function Page() {
     }
   };
 
-  useEffect(() => {
-    if (!textareaRef.current) return;
-    textareaRef.current.style.height = "auto";
-    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
-  }, [input]);
-
   return (
     <main style={styles.page}>
       <style jsx global>{`
@@ -1663,10 +1802,10 @@ export default function Page() {
           min-height: 100%;
           height: auto;
           background:
-            radial-gradient(circle at 10% 10%, rgba(134, 174, 255, 0.30), transparent 24%),
-            radial-gradient(circle at 90% 15%, rgba(255, 183, 191, 0.26), transparent 22%),
-            radial-gradient(circle at 50% 90%, rgba(117, 231, 193, 0.18), transparent 26%),
-            linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
+            radial-gradient(circle at 50% 10%, rgba(255,255,255,0.92), rgba(255,255,255,0.0) 30%),
+            radial-gradient(circle at 20% 20%, rgba(155,120,255,0.16), transparent 28%),
+            radial-gradient(circle at 85% 18%, rgba(255,194,117,0.14), transparent 24%),
+            linear-gradient(180deg, #f6f0e8 0%, #ebe4d8 100%);
           color: #101826;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           -webkit-font-smoothing: antialiased;
@@ -1727,7 +1866,9 @@ export default function Page() {
         <aside style={styles.sheet}>
           <div>
             <div style={styles.sheetTitle}>Save with email</div>
-            <div style={styles.sheetSub}>Enter your email to send yourself a magic link and save this conversation.</div>
+            <div style={styles.sheetSub}>
+              Enter your email to send yourself a magic link and save this conversation.
+            </div>
           </div>
 
           <input
@@ -1800,7 +1941,8 @@ export default function Page() {
           <div style={styles.paywallHeader}>
             <div style={styles.paywallTitle}>Future Me Pro</div>
             <div style={styles.paywallSub}>
-              More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your story.
+              More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your
+              story.
             </div>
           </div>
 
@@ -1866,27 +2008,31 @@ export default function Page() {
           <section style={styles.hero}>
             <div style={styles.heroShine} />
             <div style={styles.heroTop}>
-              <span style={styles.badge}>Future Me AI</span>
-              <span style={styles.badgeAccent}>{user ? "Cloud synced" : "Private draft"}</span>
+              <span style={styles.badge}>✦ AI Mode Active</span>
+              <span style={styles.badgeAccent}>👑 {isPro ? "Pro" : "Pro Mode"}</span>
             </div>
 
-            <div style={styles.heroTitle}>Your future self, but sharper.</div>
+            <div style={styles.heroTitle}>
+              Your future self, <br />
+              but <span style={{ color: accent }}>sharper.</span>
+            </div>
+
             <div style={styles.heroSub}>
-              A private journal-like chat with memory, cloud sync, and a cleaner “wait what should I do next?” vibe.
+              A private space where AI remembers, understands your patterns, and tells you what you need to hear.
             </div>
 
             <div style={styles.heroMetrics}>
               <div style={styles.metricCard}>
-                <div style={styles.metricValue}>{user ? "On" : "Guest"}</div>
-                <div style={styles.metricLabel}>session</div>
-              </div>
-              <div style={styles.metricCard}>
                 <div style={styles.metricValue}>{remainingToday}</div>
-                <div style={styles.metricLabel}>free left today</div>
+                <div style={styles.metricLabel}>Messages today</div>
               </div>
               <div style={styles.metricCard}>
-                <div style={styles.metricValue}>{isPro ? "Pro" : "Free"}</div>
-                <div style={styles.metricLabel}>mode</div>
+                <div style={styles.metricValue}>{isPro ? "∞" : "Pro Mode"}</div>
+                <div style={styles.metricLabel}>{isPro ? "Unlimited" : "Locked"}</div>
+              </div>
+              <div style={styles.metricCard}>
+                <div style={styles.metricValue}>{memorySummary ? "3 days" : "—"}</div>
+                <div style={styles.metricLabel}>Memory connected</div>
               </div>
             </div>
           </section>
@@ -1899,7 +2045,8 @@ export default function Page() {
 
             <div style={styles.compactTitle}>The thread is alive.</div>
             <div style={styles.compactSub}>
-              You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and keep the story moving.
+              You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and keep
+              the story moving.
             </div>
 
             <div style={styles.compactActionRow}>
@@ -1944,16 +2091,67 @@ export default function Page() {
           )}
         </div>
 
+        <section style={styles.memoryCard}>
+          <div style={styles.memoryGlow} />
+          <div style={styles.memoryHeader}>
+            <div style={styles.memoryTitleWrap}>
+              <div style={styles.memoryIcon}>🧠</div>
+              <div>
+                <div style={styles.memoryTitle}>Memory Snapshot</div>
+                <div style={styles.memoryMeta}>AI remembers the thread</div>
+              </div>
+            </div>
+            <div style={styles.memoryUpdated}>Updated 2 min ago</div>
+          </div>
+
+          <div style={styles.memoryQuote}>
+            “{memorySummary ||
+              "You’ve been thinking about direction, fear of wasting time, and wanting to build something real. You value freedom, growth and honesty with yourself."}”
+          </div>
+        </section>
+
+        <section>
+          <div style={styles.moodSection}>
+            <div>
+              <div style={styles.moodHeading}>Choose Mood</div>
+              <div style={styles.moodSub}>AI adapts tone to your current mindset</div>
+            </div>
+
+            <div style={styles.moodRow}>
+              {(Object.keys(moodLabels) as Mood[]).map((item) => {
+                const active = item === mood;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setMood(item)}
+                    style={active ? styles.moodButtonActive : styles.moodButton}
+                  >
+                    {active ? <div style={styles.moodGlow} /> : null}
+                    <div style={styles.moodIcon}>{moodIcons[item]}</div>
+                    <div style={styles.moodLabel}>{moodLabels[item]}</div>
+                    <div style={styles.moodLabelSub}>{active ? moodHints[item] : " "}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
         <section style={styles.aiPanel}>
           <div style={styles.aiHeader}>
             <div style={styles.aiHeaderLeft}>
-              <div style={styles.aiDot} />
+              <div style={styles.avatar}>FM</div>
               <div style={{ minWidth: 0 }}>
-                <div style={styles.aiTitle}>AI is {liveLabel}</div>
-                <div style={styles.aiSub}>{liveSub}</div>
+                <div style={styles.aiTitle}>Future Me</div>
+                <div style={styles.aiSub}>{hasConversationStarted ? "Online & remembering" : "Ready to respond"}</div>
               </div>
             </div>
-            <span style={styles.aiPill}>{moodHints[mood]}</span>
+
+            <div style={styles.liveChip}>
+              <span style={styles.liveDot} />
+              {liveLabel}
+            </div>
           </div>
 
           <div style={styles.aiChips}>
@@ -1962,33 +2160,6 @@ export default function Page() {
             <span style={styles.aiChip}>mode {isPro ? "pro" : "free"}</span>
           </div>
         </section>
-
-        <div style={styles.moodRow}>
-          {(Object.keys(moodLabels) as Mood[]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setMood(item)}
-              style={item === mood ? styles.moodButtonActive : styles.moodButton}
-            >
-              {moodLabels[item]}
-            </button>
-          ))}
-        </div>
-        <div style={styles.moodHint}>{moodHints[mood]}</div>
-
-        {memorySummary ? (
-          <section style={styles.memoryCard}>
-            <div style={styles.memoryHeader}>
-              <div style={styles.memoryTitle}>Picked up from last time</div>
-              {memoryPulse ? <div style={styles.memoryPulse}>memory updated</div> : null}
-            </div>
-            <div style={styles.memoryText}>{memorySummary}</div>
-            <button style={styles.memoryButton} onClick={continueFromYesterday}>
-              Continue from yesterday
-            </button>
-          </section>
-        ) : null}
 
         <section style={styles.threadCard}>
           <div style={styles.threadGlow} />
