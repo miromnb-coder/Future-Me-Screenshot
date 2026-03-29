@@ -206,7 +206,9 @@ function buildMemory(messages: Message[], mood: Mood, memorySummary = "") {
     .map((m) => m.text)
     .join(" | ");
 
-  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`.slice(0, 240);
+  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${
+    memorySummary ? ` | Summary: ${memorySummary}` : ""
+  }`.slice(0, 240);
 }
 
 function buildMemorySummary(messages: Message[]) {
@@ -272,25 +274,27 @@ async function loadDbMessages(client: SupabaseClient, userId: string): Promise<M
 function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProperties> {
   return {
     page: {
-      height: "100dvh",
       minHeight: "100dvh",
-      overflow: "hidden",
+      height: "auto",
+      overflowY: "auto",
+      overflowX: "hidden",
+      WebkitOverflowScrolling: "touch",
       padding: mobile ? 10 : 16,
       background:
         "radial-gradient(circle at top left, rgba(255,255,255,0.70), transparent 24%), radial-gradient(circle at top right, rgba(255,255,255,0.28), transparent 20%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
       color: "#101826",
       fontFamily:
-        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      overflowX: "hidden"
+        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
     },
     shell: {
-      height: "100%",
+      minHeight: "100dvh",
+      height: "auto",
       maxWidth: 860,
       margin: "0 auto",
       display: "flex",
       flexDirection: "column",
       gap: 12,
-      minHeight: 0
+      paddingBottom: 18
     },
     topBar: {
       flex: "0 0 auto",
@@ -386,12 +390,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       fontWeight: 700
     },
     memoryCard: {
-      borderRadius: 24,
-      padding: 16,
+      borderRadius: 20,
+      padding: 12,
       background: "rgba(16,24,38,0.05)",
       border: "1px solid rgba(16,24,38,0.06)",
       display: "grid",
-      gap: 8
+      gap: 6
     },
     memoryTitle: {
       fontSize: 13,
@@ -413,8 +417,6 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       width: "fit-content"
     },
     threadCard: {
-      flex: "1 1 auto",
-      minHeight: 0,
       display: "flex",
       flexDirection: "column",
       borderRadius: 30,
@@ -422,7 +424,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
       overflow: "hidden",
-      backdropFilter: "blur(18px)"
+      backdropFilter: "blur(18px)",
+      minHeight: mobile ? 320 : 420
     },
     threadHeader: {
       flex: "0 0 auto",
@@ -489,18 +492,17 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       minHeight: 0,
       display: "flex",
       flexDirection: "column",
-      padding: 16
+      padding: mobile ? 12 : 16
     },
     stream: {
       flex: "1 1 auto",
       minHeight: 0,
-      overflowY: "auto",
-      WebkitOverflowScrolling: "touch",
-      overscrollBehavior: "contain",
+      overflowY: "visible",
       display: "flex",
       flexDirection: "column",
       gap: 10,
-      paddingRight: 2
+      paddingRight: 0,
+      paddingBottom: 4
     },
     messageRow: {
       display: "flex",
@@ -514,17 +516,18 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       justifyContent: "flex-start"
     },
     messageBubble: {
-      maxWidth: mobile ? "86%" : "72%",
-      padding: "14px 16px",
-      borderRadius: 26,
-      fontSize: 14,
-      lineHeight: 1.6,
+      maxWidth: mobile ? "88%" : "74%",
+      minWidth: 0,
+      padding: mobile ? "11px 13px" : "12px 14px",
+      borderRadius: 24,
+      fontSize: mobile ? 13 : 14,
+      lineHeight: 1.45,
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
-      overflowWrap: "break-word",
+      overflowWrap: "anywhere",
       letterSpacing: "-0.005em",
       position: "relative",
-      width: "fit-content"
+      boxSizing: "border-box"
     },
     meBubble: {
       background: "linear-gradient(180deg, #101826, #141f2f)",
@@ -564,7 +567,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     composerShell: {
       flex: "0 0 auto",
-      borderRadius: 28,
+      borderRadius: 22,
       background: "rgba(255,255,255,0.72)",
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 20px 54px rgba(16,24,38,0.08)",
@@ -573,33 +576,33 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     composerRow: {
       display: "flex",
-      gap: 10,
+      gap: 8,
       alignItems: "flex-end",
-      padding: 14,
+      padding: 12,
       flexDirection: mobile ? "column" : "row"
     },
     composerTextarea: {
       flex: 1,
       width: "100%",
-      minHeight: 58,
-      maxHeight: 180,
+      minHeight: 44,
+      maxHeight: 110,
       resize: "none",
-      borderRadius: 26,
+      borderRadius: 18,
       border: "1px solid rgba(16,24,38,0.08)",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      padding: "15px 14px",
-      lineHeight: 1.55,
-      fontSize: 15,
+      padding: "11px 12px",
+      lineHeight: 1.45,
+      fontSize: 14,
       outline: "none",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
       transition: "border-color 160ms ease, box-shadow 160ms ease"
     },
     sendButton: {
-      minWidth: mobile ? "100%" : 104,
+      minWidth: mobile ? "100%" : 80,
       border: 0,
-      borderRadius: 26,
-      padding: "14px 16px",
+      borderRadius: 18,
+      padding: "10px 14px",
       background: "linear-gradient(180deg, #101826, #1b2636)",
       color: "#f5efe6",
       fontWeight: 700,
@@ -928,9 +931,9 @@ export default function Page() {
   }, [messages, loading]);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet ? "hidden" : "";
+    document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet ? "hidden" : "auto";
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = "auto";
     };
   }, [menuOpen, paywallOpen, showSaveSheet]);
 
@@ -1211,7 +1214,8 @@ export default function Page() {
         body {
           margin: 0;
           width: 100%;
-          height: 100%;
+          min-height: 100%;
+          height: auto;
           background:
             radial-gradient(circle at top left, rgba(255, 255, 255, 0.70), transparent 24%),
             radial-gradient(circle at top right, rgba(255, 255, 255, 0.28), transparent 20%),
@@ -1220,10 +1224,8 @@ export default function Page() {
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
-        }
-
-        body {
-          overflow: hidden;
+          overflow-x: hidden;
+          overflow-y: auto;
         }
 
         button,
@@ -1474,11 +1476,13 @@ export default function Page() {
                 >
                   <div
                     style={{
-                      ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble),
-                      maxWidth: "82%"
+                      ...styles.messageBubble,
+                      ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble)
                     }}
                   >
-                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{message.text}</div>
+                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45, overflowWrap: "anywhere" }}>
+                      {message.text}
+                    </div>
                     <div style={styles.timestamp}>{message.time}</div>
                   </div>
                 </div>
