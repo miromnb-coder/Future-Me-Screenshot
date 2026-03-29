@@ -63,6 +63,20 @@ const moodLabels: Record<Mood, string> = {
   wise: "Wise",
 };
 
+const moodHints: Record<Mood, string> = {
+  calm: "slow the noise down",
+  honest: "say the real thing",
+  direct: "cut to the point",
+  wise: "see the pattern",
+};
+
+const placeholderByMood: Record<Mood, string> = {
+  calm: "What feels heavy right now?",
+  honest: "What are you actually avoiding?",
+  direct: "Say the thing.",
+  wise: "What matters most here?",
+};
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
@@ -516,6 +530,55 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       letterSpacing: "-0.04em",
       lineHeight: 1,
     },
+    heroCompact: {
+      borderRadius: 30,
+      padding: mobile ? 18 : 22,
+      background:
+        "linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.62))",
+      border: "1px solid rgba(16,24,38,0.08)",
+      boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
+      backdropFilter: "blur(20px)",
+      position: "relative",
+      overflow: "hidden",
+    },
+    heroCompactTitle: {
+      fontSize: mobile ? 24 : 30,
+      fontWeight: 950,
+      letterSpacing: "-0.05em",
+      lineHeight: 1,
+      marginTop: 8,
+    },
+    heroCompactSub: {
+      marginTop: 10,
+      fontSize: mobile ? 14 : 15,
+      lineHeight: 1.6,
+      color: "rgba(16,24,38,0.68)",
+      maxWidth: 760,
+    },
+    compactActionRow: {
+      marginTop: 14,
+      display: "flex",
+      gap: 10,
+      flexWrap: "wrap",
+    },
+    compactButton: {
+      border: 0,
+      borderRadius: 16,
+      padding: "11px 14px",
+      background: "#101826",
+      color: "#f5efe6",
+      fontWeight: 900,
+      boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+    },
+    compactGhost: {
+      border: "1px solid rgba(16,24,38,0.08)",
+      borderRadius: 16,
+      padding: "11px 14px",
+      background: "rgba(255,255,255,0.82)",
+      color: "#101826",
+      fontWeight: 800,
+      boxShadow: "0 10px 24px rgba(16,24,38,0.05)",
+    },
     statusRow: {
       flex: "0 0 auto",
       display: "flex",
@@ -574,6 +637,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       fontWeight: 800,
       boxShadow: "0 14px 32px rgba(16,24,38,0.14)",
     },
+    moodHint: {
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)",
+      marginTop: -2,
+      paddingLeft: 4,
+    },
     memoryCard: {
       borderRadius: 24,
       padding: 14,
@@ -585,12 +654,31 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       boxShadow: "0 18px 46px rgba(16,24,38,0.07)",
       backdropFilter: "blur(18px)",
     },
+    memoryHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 10,
+      flexWrap: "wrap",
+    },
     memoryTitle: {
       fontSize: 13,
       fontWeight: 900,
       letterSpacing: "-0.02em",
       textTransform: "uppercase",
       opacity: 0.88,
+    },
+    memoryPulse: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "7px 10px",
+      borderRadius: 999,
+      background: "rgba(76,175,122,0.12)",
+      color: "#206f47",
+      border: "1px solid rgba(16,24,38,0.06)",
+      fontSize: 12,
+      fontWeight: 800,
     },
     memoryText: {
       fontSize: 13,
@@ -708,7 +796,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     stream: {
       display: "flex",
       flexDirection: "column",
-      gap: 10,
+      gap: 12,
       paddingBottom: 4,
     },
     messageRow: {
@@ -725,7 +813,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     messageBubble: {
       maxWidth: mobile ? "90%" : "72%",
       minWidth: 0,
-      padding: mobile ? "11px 13px" : "12px 14px",
+      padding: mobile ? "12px 13px" : "12px 14px",
       borderRadius: 26,
       fontSize: mobile ? 13 : 14,
       lineHeight: 1.5,
@@ -739,7 +827,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       backdropFilter: "blur(10px)",
     },
     meBubble: {
-      background: "linear-gradient(180deg, #101826, #141f2f)",
+      background: "linear-gradient(135deg, #101826, #1c2638)",
       color: "#f5efe6",
       boxShadow: "0 16px 34px rgba(16,24,38,0.15)",
       borderTopLeftRadius: 26,
@@ -748,7 +836,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       borderBottomRightRadius: 16,
     },
     futureMeBubble: {
-      background: "rgba(255,255,255,0.74)",
+      background: "rgba(255,255,255,0.76)",
       color: "#101826",
       border: "1px solid rgba(16,24,38,0.06)",
       borderTopLeftRadius: 26,
@@ -756,8 +844,47 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       borderBottomLeftRadius: 16,
       borderBottomRightRadius: 26,
     },
+    messageTop: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      marginBottom: 8,
+    },
+    messageRole: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "6px 10px",
+      borderRadius: 999,
+      fontSize: 11,
+      fontWeight: 900,
+      letterSpacing: "0.02em",
+      background: "rgba(16,24,38,0.06)",
+      color: "rgba(16,24,38,0.72)",
+    },
+    messageRoleMe: {
+      background: "rgba(255,255,255,0.10)",
+      color: "#f5efe6",
+    },
+    copyButton: {
+      border: "1px solid rgba(16,24,38,0.08)",
+      borderRadius: 999,
+      padding: "6px 10px",
+      background: "rgba(255,255,255,0.74)",
+      color: "#101826",
+      fontSize: 11,
+      fontWeight: 800,
+      boxShadow: "0 8px 18px rgba(16,24,38,0.04)",
+    },
+    messageText: {
+      fontSize: mobile ? 13 : 14,
+      lineHeight: 1.6,
+      whiteSpace: "pre-wrap",
+      overflowWrap: "anywhere",
+    },
     timestamp: {
-      marginTop: 6,
+      marginTop: 8,
       fontSize: 11,
       color: "rgba(16,24,38,0.52)",
     },
@@ -775,6 +902,19 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       letterSpacing: "0.02em",
       animation: "pulse 1.3s ease-in-out infinite",
     },
+    typingDots: {
+      display: "inline-flex",
+      gap: 6,
+      alignItems: "center",
+    },
+    typingDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 999,
+      background: "currentColor",
+      opacity: 0.8,
+      animation: "pulse 1.1s ease-in-out infinite",
+    },
     composerShell: {
       flex: "0 0 auto",
       borderRadius: 26,
@@ -784,6 +924,25 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
       backdropFilter: "blur(22px)",
       overflow: "hidden",
+    },
+    composerTop: {
+      display: "flex",
+      justifyContent: "space-between",
+      gap: 10,
+      flexWrap: "wrap",
+      padding: "14px 14px 0",
+    },
+    composerChip: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "7px 10px",
+      borderRadius: 999,
+      background: "rgba(16,24,38,0.05)",
+      color: "rgba(16,24,38,0.7)",
+      border: "1px solid rgba(16,24,38,0.06)",
+      fontSize: 12,
+      fontWeight: 800,
     },
     composerRow: {
       display: "flex",
@@ -795,14 +954,14 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     composerTextarea: {
       flex: 1,
       width: "100%",
-      minHeight: 46,
-      maxHeight: 120,
+      minHeight: 52,
+      maxHeight: 140,
       resize: "none",
       borderRadius: 20,
       border: "1px solid rgba(16,24,38,0.08)",
       background: "rgba(255,255,255,0.90)",
       color: "#101826",
-      padding: "12px 12px",
+      padding: "13px 13px",
       lineHeight: 1.45,
       fontSize: 14,
       outline: "none",
@@ -810,13 +969,13 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       transition: "border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
     },
     sendButton: {
-      minWidth: mobile ? "100%" : 88,
+      minWidth: mobile ? "100%" : 98,
       border: 0,
       borderRadius: 20,
-      padding: "11px 14px",
+      padding: "12px 14px",
       background: "linear-gradient(180deg, #101826, #1b2636)",
       color: "#f5efe6",
-      fontWeight: 800,
+      fontWeight: 900,
       boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
       transition: "transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease",
     },
@@ -872,7 +1031,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.08)",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      fontWeight: 700,
+      fontWeight: 800,
       boxShadow: "0 10px 24px rgba(16,24,38,0.04)",
     },
     paywallBackdrop: {
@@ -1055,8 +1214,9 @@ export default function Page() {
   const [emailCooldownUntil, setEmailCooldownUntilState] = useState(0);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [memorySummary, setMemorySummary] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [memoryPulse, setMemoryPulse] = useState(false);
 
-  const threadRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -1066,9 +1226,14 @@ export default function Page() {
   const cooldownLeftMs = Math.max(0, emailCooldownUntil - Date.now());
   const cooldownLeftSec = Math.ceil(cooldownLeftMs / 1000);
   const emailDisabled = sendingEmail || cooldownLeftMs > 0;
-
   const draftKey = useMemo(() => profileToDraftKey(user?.email), [user?.email]);
   const memoryKey = useMemo(() => profileToMemoryKey(user?.email), [user?.email]);
+  const hasConversationStarted = messages.some((m) => m.id !== "welcome");
+  const visibleMessageCount = Math.max(0, messages.length - 1);
+  const liveLabel = loading ? "responding..." : user ? "synced" : "ready";
+  const liveHint = user ? "cloud memory on" : "local memory";
+  const composerPlaceholder = placeholderByMood[mood];
+  const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud save active" : "private draft";
 
   useEffect(() => {
     const update = () => setMobile(window.innerWidth < 900);
@@ -1150,16 +1315,46 @@ export default function Page() {
   }, [messages, loading]);
 
   useEffect(() => {
-    if (!threadRef.current) return;
-    threadRef.current.scrollTop = threadRef.current.scrollHeight;
-  }, [messages, loading]);
-
-  useEffect(() => {
     document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet ? "hidden" : "auto";
     return () => {
       document.body.style.overflow = "auto";
     };
   }, [menuOpen, paywallOpen, showSaveSheet]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const hydrate = async () => {
+      const { data } = await supabase.auth.getSession();
+      await syncSession(data.session?.user ?? null);
+    };
+
+    void hydrate();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        void syncSession(null);
+        return;
+      }
+
+      setTimeout(() => {
+        void syncSession(session?.user ?? null);
+      }, 0);
+    });
+
+    return () => subscription.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const styles = useMemo(() => createStyles(mobile, isPro), [mobile, isPro]);
+
+  function incrementUsage() {
+    const today = todayKey();
+    const nextUsage =
+      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
+    setUsage(nextUsage);
+    return nextUsage;
+  }
 
   async function syncSession(nextUser: User | null) {
     setUser(nextUser);
@@ -1201,41 +1396,6 @@ export default function Page() {
       setMemorySummary(cloudMemory);
       window.localStorage.setItem(profileToMemoryKey(nextUser.email), cloudMemory);
     }
-  }
-
-  useEffect(() => {
-    if (!supabase) return;
-
-    const hydrate = async () => {
-      const { data } = await supabase.auth.getSession();
-      await syncSession(data.session?.user ?? null);
-    };
-
-    void hydrate();
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT") {
-        void syncSession(null);
-        return;
-      }
-
-      setTimeout(() => {
-        void syncSession(session?.user ?? null);
-      }, 0);
-    });
-
-    return () => subscription.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const styles = useMemo(() => createStyles(mobile, isPro), [mobile, isPro]);
-
-  function incrementUsage() {
-    const today = todayKey();
-    const nextUsage =
-      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
-    setUsage(nextUsage);
-    return nextUsage;
   }
 
   async function signInWithEmail() {
@@ -1282,29 +1442,13 @@ export default function Page() {
     setTimeout(() => textareaRef.current?.focus(), 0);
   }
 
-  async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
-    if (!supabase) return;
-
-    const now = new Date().toISOString();
-
-    const insertRes = await supabase.from("messages").insert([
-      { user_id: user.id, role: "me", text: userText },
-      { user_id: user.id, role: "future me", text: assistantText },
-    ]);
-
-    if (insertRes.error) {
-      console.error(insertRes.error);
-    }
-
-    const profileRes = await supabase.from("profiles").upsert({
-      user_id: user.id,
-      email: user.email ?? null,
-      memory_summary: memorySummary,
-      last_seen_at: now,
-    });
-
-    if (profileRes.error) {
-      console.error(profileRes.error);
+  async function copyMessage(text: string, id: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId(null), 1200);
+    } catch {
+      // ignore
     }
   }
 
@@ -1375,6 +1519,8 @@ export default function Page() {
       const finalMessages = [...nextMessages, assistantMessage].slice(-MAX_MESSAGES);
       setMessages(finalMessages);
       setMemorySummary(buildMemorySummary(finalMessages));
+      setMemoryPulse(true);
+      window.setTimeout(() => setMemoryPulse(false), 1400);
 
       if (user) {
         await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
@@ -1396,6 +1542,8 @@ export default function Page() {
       const finalMessages = [...nextMessages, assistantMessage].slice(-MAX_MESSAGES);
       setMessages(finalMessages);
       setMemorySummary(buildMemorySummary(finalMessages));
+      setMemoryPulse(true);
+      window.setTimeout(() => setMemoryPulse(false), 1400);
 
       if (user) {
         await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
@@ -1461,6 +1609,12 @@ export default function Page() {
       void sendMessage();
     }
   };
+
+  useEffect(() => {
+    if (!textareaRef.current) return;
+    textareaRef.current.style.height = "auto";
+    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
+  }, [input]);
 
   return (
     <main style={styles.page}>
@@ -1679,33 +1833,63 @@ export default function Page() {
           </button>
         </header>
 
-        <section style={styles.heroCard}>
-          <div style={styles.heroShine} />
-          <div style={styles.heroTop}>
-            <span style={styles.heroBadge}>Future Me AI</span>
-            <span style={styles.heroBadgeAccent}>{user ? "Cloud synced" : "Private draft"}</span>
-          </div>
+        {!hasConversationStarted ? (
+          <section style={styles.heroCard}>
+            <div style={styles.heroShine} />
+            <div style={styles.heroTop}>
+              <span style={styles.heroBadge}>Future Me AI</span>
+              <span style={styles.heroBadgeAccent}>{user ? "Cloud synced" : "Private draft"}</span>
+            </div>
 
-          <div style={styles.heroTitle}>Your future self, but sharper.</div>
-          <div style={styles.heroSub}>
-            A private journal-like chat with memory, cloud sync, and a cleaner “wait what should I do next?” vibe.
-          </div>
+            <div style={styles.heroTitle}>Your future self, but sharper.</div>
+            <div style={styles.heroSub}>
+              A private journal-like chat with memory, cloud sync, and a cleaner “wait what should I do next?” vibe.
+            </div>
 
-          <div style={styles.heroMetrics}>
-            <div style={styles.metricCard}>
-              <div style={styles.metricValue}>{user ? "On" : "Guest"}</div>
-              <div style={styles.metricLabel}>session</div>
+            <div style={styles.heroMetrics}>
+              <div style={styles.metricCard}>
+                <div style={styles.metricValue}>{user ? "On" : "Guest"}</div>
+                <div style={styles.metricLabel}>session</div>
+              </div>
+              <div style={styles.metricCard}>
+                <div style={styles.metricValue}>{remainingToday}</div>
+                <div style={styles.metricLabel}>free left today</div>
+              </div>
+              <div style={styles.metricCard}>
+                <div style={styles.metricValue}>{isPro ? "Pro" : "Free"}</div>
+                <div style={styles.metricLabel}>mode</div>
+              </div>
             </div>
-            <div style={styles.metricCard}>
-              <div style={styles.metricValue}>{remainingToday}</div>
-              <div style={styles.metricLabel}>free left today</div>
+          </section>
+        ) : (
+          <section style={styles.heroCompact}>
+            <div style={styles.heroTop}>
+              <span style={styles.heroBadge}>Conversation in motion</span>
+              <span style={styles.heroBadgeAccent}>{memoryBadge}</span>
             </div>
-            <div style={styles.metricCard}>
-              <div style={styles.metricValue}>{isPro ? "Pro" : "Free"}</div>
-              <div style={styles.metricLabel}>mode</div>
+
+            <div style={styles.heroCompactTitle}>The thread is alive.</div>
+            <div style={styles.heroCompactSub}>
+              You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and keep
+              the story moving.
             </div>
-          </div>
-        </section>
+
+            <div style={styles.compactActionRow}>
+              {memorySummary ? (
+                <button style={styles.compactButton} onClick={continueFromYesterday}>
+                  Continue from yesterday
+                </button>
+              ) : (
+                <button style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>
+                  Keep writing
+                </button>
+              )}
+              <button style={styles.compactGhost} onClick={() => setMenuOpen(true)}>
+                Open actions
+              </button>
+            </div>
+          </section>
+        )}
 
         <div style={styles.statusRow}>
           <span style={styles.pill}>
@@ -1720,6 +1904,7 @@ export default function Page() {
             {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
           </span>
           <span style={styles.pill}>{user ? "synced to cloud" : "guest mode"}</span>
+          <span style={styles.pill}>{visibleMessageCount} messages</span>
           {!user ? (
             <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
               Save with email
@@ -1730,16 +1915,6 @@ export default function Page() {
             </button>
           )}
         </div>
-
-        {memorySummary ? (
-          <div style={styles.memoryCard}>
-            <div style={styles.memoryTitle}>Picked up from last time</div>
-            <div style={styles.memoryText}>{memorySummary}</div>
-            <button style={styles.memoryButton} onClick={continueFromYesterday}>
-              Continue from yesterday
-            </button>
-          </div>
-        ) : null}
 
         <div style={styles.moodRow}>
           {(Object.keys(moodLabels) as Mood[]).map((item) => (
@@ -1753,6 +1928,20 @@ export default function Page() {
             </button>
           ))}
         </div>
+        <div style={styles.moodHint}>{moodHints[mood]}</div>
+
+        {memorySummary ? (
+          <section style={styles.memoryCard}>
+            <div style={styles.memoryHeader}>
+              <div style={styles.memoryTitle}>Picked up from last time</div>
+              {memoryPulse ? <div style={styles.memoryPulse}>memory updated</div> : null}
+            </div>
+            <div style={styles.memoryText}>{memorySummary}</div>
+            <button style={styles.memoryButton} onClick={continueFromYesterday}>
+              Continue from yesterday
+            </button>
+          </section>
+        ) : null}
 
         <section style={styles.threadCard}>
           <div style={styles.threadCardGlow} />
@@ -1767,39 +1956,57 @@ export default function Page() {
 
             <div style={styles.liveChip}>
               <span style={styles.liveDot} />
-              {loading ? "typing..." : "ready"}
+              {liveLabel}
             </div>
           </div>
 
-          <div ref={threadRef} style={styles.threadBody}>
+          <div style={styles.threadBody}>
             <div style={styles.stream}>
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  style={{
-                    display: "flex",
-                    width: "100%",
-                    justifyContent: message.role === "me" ? "flex-end" : "flex-start",
-                    animation: "floatIn 220ms ease both",
-                  }}
-                >
+              {messages.map((message) => {
+                const isUser = message.role === "me";
+                const roleLabel = isUser ? "You" : "Future Me";
+                const bubbleStyle = isUser ? styles.meBubble : styles.futureMeBubble;
+                const roleStyle = isUser ? { ...styles.messageRole, ...styles.messageRoleMe } : styles.messageRole;
+
+                return (
                   <div
+                    key={message.id}
                     style={{
-                      ...styles.messageBubble,
-                      ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble),
+                      display: "flex",
+                      width: "100%",
+                      justifyContent: isUser ? "flex-end" : "flex-start",
+                      animation: "floatIn 220ms ease both",
                     }}
                   >
-                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}>
-                      {message.text}
-                    </div>
-                    <div style={styles.timestamp}>{message.time}</div>
+                    <article style={{ ...styles.messageBubble, ...bubbleStyle }}>
+                      <div style={styles.messageTop}>
+                        <span style={roleStyle}>{roleLabel}</span>
+                        <button
+                          type="button"
+                          style={styles.copyButton}
+                          onClick={() => void copyMessage(message.text, message.id)}
+                        >
+                          {copiedId === message.id ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+
+                      <div style={styles.messageText}>{message.text}</div>
+                      <div style={styles.timestamp}>{message.time}</div>
+                    </article>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {loading ? (
                 <div style={styles.typingRow}>
-                  <div style={styles.typingBubble}>typing…</div>
+                  <div style={styles.typingBubble}>
+                    <span style={styles.typingDots}>
+                      <span style={styles.typingDot} />
+                      <span style={{ ...styles.typingDot, animationDelay: "120ms" }} />
+                      <span style={{ ...styles.typingDot, animationDelay: "240ms" }} />
+                    </span>{" "}
+                    typing…
+                  </div>
                 </div>
               ) : null}
 
@@ -1809,6 +2016,11 @@ export default function Page() {
         </section>
 
         <section style={styles.composerShell}>
+          <div style={styles.composerTop}>
+            <span style={styles.composerChip}>{moodLabels[mood]} mode</span>
+            <span style={styles.composerChip}>{memoryBadge}</span>
+          </div>
+
           <div style={styles.composerRow}>
             <textarea
               ref={textareaRef}
@@ -1816,12 +2028,12 @@ export default function Page() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Write anything..."
+              placeholder={composerPlaceholder}
               rows={1}
             />
 
             <button style={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
-              {loading ? "Sending..." : "Send"}
+              {loading ? "Thinking..." : "Send"}
             </button>
           </div>
 
