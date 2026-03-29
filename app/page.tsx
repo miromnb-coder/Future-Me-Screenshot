@@ -334,20 +334,45 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       WebkitOverflowScrolling: "touch",
       padding: mobile ? 10 : 16,
       background:
-        "radial-gradient(circle at top left, rgba(255,255,255,0.70), transparent 24%), radial-gradient(circle at top right, rgba(255,255,255,0.28), transparent 20%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
+        "radial-gradient(circle at 10% 10%, rgba(134, 174, 255, 0.30), transparent 24%), radial-gradient(circle at 90% 15%, rgba(255, 183, 191, 0.26), transparent 22%), radial-gradient(circle at 50% 90%, rgba(117, 231, 193, 0.18), transparent 26%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
       color: "#101826",
       fontFamily:
         'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      position: "relative",
     },
     shell: {
       minHeight: "100dvh",
       height: "auto",
-      maxWidth: 860,
+      maxWidth: 980,
       margin: "0 auto",
       display: "flex",
       flexDirection: "column",
       gap: 12,
-      paddingBottom: 18,
+      paddingBottom: 20,
+      position: "relative",
+      zIndex: 1,
+    },
+    ambientGlowA: {
+      position: "fixed",
+      inset: "auto auto 8% -8%",
+      width: 260,
+      height: 260,
+      borderRadius: 999,
+      background: "radial-gradient(circle, rgba(255,255,255,0.52), rgba(255,255,255,0))",
+      filter: "blur(18px)",
+      pointerEvents: "none",
+      zIndex: 0,
+    },
+    ambientGlowB: {
+      position: "fixed",
+      inset: "8% -6% auto auto",
+      width: 320,
+      height: 320,
+      borderRadius: 999,
+      background: "radial-gradient(circle, rgba(255,255,255,0.36), rgba(255,255,255,0))",
+      filter: "blur(22px)",
+      pointerEvents: "none",
+      zIndex: 0,
     },
     topBar: {
       flex: "0 0 auto",
@@ -355,10 +380,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
-      padding: "8px 2px 8px",
-      backdropFilter: "blur(16px)",
-      background: "linear-gradient(180deg, rgba(244,239,231,0.96), rgba(244,239,231,0.80))",
-      borderRadius: 18,
+      padding: "10px 10px",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.52))",
+      borderRadius: 22,
+      border: "1px solid rgba(16,24,38,0.08)",
+      boxShadow: "0 16px 46px rgba(16,24,38,0.08)",
+      backdropFilter: "blur(20px)",
     },
     topTitle: {
       display: "flex",
@@ -367,20 +394,26 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       gap: 2,
       textAlign: "center",
       flex: 1,
+      minWidth: 0,
     },
     brand: {
-      fontSize: 18,
-      fontWeight: 800,
-      letterSpacing: "-0.035em",
+      fontSize: mobile ? 18 : 20,
+      fontWeight: 900,
+      letterSpacing: "-0.04em",
+      lineHeight: 1.05,
     },
     brandSub: {
       fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
+      color: "rgba(16,24,38,0.58)",
+      maxWidth: 220,
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
     },
     iconButton: {
-      width: 42,
-      height: 42,
-      borderRadius: 14,
+      width: 44,
+      height: 44,
+      borderRadius: 16,
       border: "1px solid rgba(16,24,38,0.08)",
       background: "rgba(255,255,255,0.78)",
       color: "#101826",
@@ -388,6 +421,100 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       placeItems: "center",
       cursor: "pointer",
       boxShadow: "0 12px 26px rgba(16,24,38,0.05)",
+      transition: "transform 160ms ease, box-shadow 160ms ease, background 160ms ease",
+    },
+    heroCard: {
+      borderRadius: 30,
+      padding: mobile ? 18 : 22,
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.58))",
+      border: "1px solid rgba(16,24,38,0.08)",
+      boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
+      backdropFilter: "blur(20px)",
+      position: "relative",
+      overflow: "hidden",
+    },
+    heroShine: {
+      position: "absolute",
+      inset: "-40% auto auto 55%",
+      width: 260,
+      height: 260,
+      borderRadius: 999,
+      background: "radial-gradient(circle, rgba(134,174,255,0.22), rgba(134,174,255,0))",
+      pointerEvents: "none",
+      filter: "blur(8px)",
+    },
+    heroTop: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 12,
+      flexWrap: "wrap",
+      marginBottom: 14,
+    },
+    heroBadge: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "8px 12px",
+      borderRadius: 999,
+      background: "rgba(16,24,38,0.06)",
+      border: "1px solid rgba(16,24,38,0.06)",
+      fontSize: 12,
+      fontWeight: 800,
+      letterSpacing: "0.02em",
+      width: "fit-content",
+    },
+    heroBadgeAccent: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "8px 12px",
+      borderRadius: 999,
+      background: isPro ? "rgba(76,175,122,0.12)" : "rgba(141,107,61,0.10)",
+      border: "1px solid rgba(16,24,38,0.06)",
+      color: isPro ? "#206f47" : "#7c5a2f",
+      fontSize: 12,
+      fontWeight: 800,
+      width: "fit-content",
+    },
+    heroTitle: {
+      fontSize: mobile ? 28 : 42,
+      fontWeight: 950,
+      letterSpacing: "-0.06em",
+      lineHeight: 0.98,
+      maxWidth: 560,
+      marginBottom: 10,
+    },
+    heroSub: {
+      fontSize: mobile ? 14 : 15,
+      lineHeight: 1.6,
+      color: "rgba(16,24,38,0.68)",
+      maxWidth: 700,
+    },
+    heroMetrics: {
+      display: "grid",
+      gridTemplateColumns: mobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))",
+      gap: 10,
+      marginTop: 18,
+    },
+    metricCard: {
+      borderRadius: 22,
+      padding: 14,
+      background: "rgba(255,255,255,0.64)",
+      border: "1px solid rgba(16,24,38,0.07)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
+    },
+    metricLabel: {
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)",
+      marginTop: 4,
+    },
+    metricValue: {
+      fontSize: mobile ? 20 : 24,
+      fontWeight: 900,
+      letterSpacing: "-0.04em",
+      lineHeight: 1,
     },
     statusRow: {
       flex: "0 0 auto",
@@ -403,20 +530,22 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "8px 12px",
       borderRadius: 999,
       border: "1px solid rgba(16,24,38,0.06)",
-      background: "rgba(255,255,255,0.52)",
-      color: "rgba(16,24,38,0.72)",
+      background: "rgba(255,255,255,0.55)",
+      color: "rgba(16,24,38,0.75)",
       fontSize: 12,
       letterSpacing: "0.01em",
       backdropFilter: "blur(12px)",
+      boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
     },
     pillAction: {
       border: "1px solid rgba(16,24,38,0.06)",
-      background: "rgba(255,255,255,0.66)",
+      background: "rgba(255,255,255,0.72)",
       color: "#101826",
       padding: "8px 12px",
       borderRadius: 999,
       fontSize: 12,
-      fontWeight: 600,
+      fontWeight: 700,
+      boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
     },
     moodRow: {
       flex: "0 0 auto",
@@ -426,12 +555,14 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     moodButton: {
       border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.68)",
+      background: "rgba(255,255,255,0.72)",
       color: "#101826",
       padding: "9px 13px",
       borderRadius: 999,
       fontSize: 12,
-      fontWeight: 600,
+      fontWeight: 700,
+      boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
+      backdropFilter: "blur(14px)",
     },
     moodButtonActive: {
       border: "1px solid rgba(16,24,38,0.10)",
@@ -440,24 +571,30 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "9px 13px",
       borderRadius: 999,
       fontSize: 12,
-      fontWeight: 700,
+      fontWeight: 800,
+      boxShadow: "0 14px 32px rgba(16,24,38,0.14)",
     },
     memoryCard: {
-      borderRadius: 20,
-      padding: 12,
-      background: "rgba(16,24,38,0.05)",
-      border: "1px solid rgba(16,24,38,0.06)",
+      borderRadius: 24,
+      padding: 14,
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.70), rgba(255,255,255,0.52))",
+      border: "1px solid rgba(16,24,38,0.07)",
       display: "grid",
-      gap: 6,
+      gap: 8,
+      boxShadow: "0 18px 46px rgba(16,24,38,0.07)",
+      backdropFilter: "blur(18px)",
     },
     memoryTitle: {
       fontSize: 13,
-      fontWeight: 800,
+      fontWeight: 900,
       letterSpacing: "-0.02em",
+      textTransform: "uppercase",
+      opacity: 0.88,
     },
     memoryText: {
       fontSize: 13,
-      lineHeight: 1.5,
+      lineHeight: 1.55,
       color: "rgba(16,24,38,0.72)",
     },
     memoryButton: {
@@ -466,19 +603,33 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "10px 14px",
       background: "#101826",
       color: "#f5efe6",
-      fontWeight: 700,
+      fontWeight: 800,
       width: "fit-content",
+      boxShadow: "0 14px 30px rgba(16,24,38,0.14)",
     },
     threadCard: {
       display: "flex",
       flexDirection: "column",
-      borderRadius: 30,
-      background: "rgba(255,255,255,0.62)",
-      border: "1px solid rgba(16,24,38,0.07)",
-      boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
+      borderRadius: 34,
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.58))",
+      border: "1px solid rgba(16,24,38,0.08)",
+      boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
       overflow: "hidden",
-      backdropFilter: "blur(18px)",
-      minHeight: mobile ? 320 : 420,
+      backdropFilter: "blur(22px)",
+      minHeight: mobile ? 360 : 520,
+      position: "relative",
+    },
+    threadCardGlow: {
+      position: "absolute",
+      inset: "-30% auto auto -12%",
+      width: 220,
+      height: 220,
+      borderRadius: 999,
+      background: "radial-gradient(circle, rgba(255,255,255,0.40), rgba(255,255,255,0))",
+      filter: "blur(12px)",
+      pointerEvents: "none",
+      zIndex: 0,
     },
     threadHeader: {
       flex: "0 0 auto",
@@ -488,8 +639,10 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       gap: 12,
       padding: 16,
       borderBottom: "1px solid rgba(16,24,38,0.06)",
-      background: "rgba(255,255,255,0.34)",
-      backdropFilter: "blur(10px)",
+      background: "rgba(255,255,255,0.38)",
+      backdropFilter: "blur(14px)",
+      position: "relative",
+      zIndex: 1,
     },
     threadLeft: {
       display: "flex",
@@ -497,16 +650,16 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       gap: 12,
     },
     avatar: {
-      width: 38,
-      height: 38,
-      borderRadius: 999,
-      background: "linear-gradient(135deg, #101826, #1f2b3d)",
+      width: 42,
+      height: 42,
+      borderRadius: 16,
+      background: "linear-gradient(135deg, #101826, #26364f)",
       color: "#f5efe6",
       display: "grid",
       placeItems: "center",
       fontSize: 14,
-      fontWeight: 800,
-      boxShadow: "0 10px 18px rgba(16,24,38,0.14)",
+      fontWeight: 900,
+      boxShadow: "0 12px 24px rgba(16,24,38,0.16)",
     },
     threadText: {
       display: "flex",
@@ -515,7 +668,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     threadName: {
       fontSize: 16,
-      fontWeight: 800,
+      fontWeight: 900,
       letterSpacing: "-0.03em",
     },
     threadMeta: {
@@ -532,6 +685,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.06)",
       fontSize: 12,
       color: "rgba(16,24,38,0.7)",
+      boxShadow: "0 10px 26px rgba(16,24,38,0.04)",
     },
     liveDot: {
       width: 8,
@@ -548,6 +702,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       display: "flex",
       flexDirection: "column",
       padding: mobile ? 12 : 16,
+      position: "relative",
+      zIndex: 1,
     },
     stream: {
       display: "flex",
@@ -567,31 +723,34 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       justifyContent: "flex-start",
     },
     messageBubble: {
-      maxWidth: mobile ? "88%" : "74%",
+      maxWidth: mobile ? "90%" : "72%",
       minWidth: 0,
       padding: mobile ? "11px 13px" : "12px 14px",
-      borderRadius: 24,
+      borderRadius: 26,
       fontSize: mobile ? 13 : 14,
-      lineHeight: 1.45,
+      lineHeight: 1.5,
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
       overflowWrap: "anywhere",
       letterSpacing: "-0.005em",
       position: "relative",
       boxSizing: "border-box",
+      boxShadow: "0 14px 30px rgba(16,24,38,0.06)",
+      backdropFilter: "blur(10px)",
     },
     meBubble: {
       background: "linear-gradient(180deg, #101826, #141f2f)",
       color: "#f5efe6",
-      boxShadow: "0 12px 24px rgba(16,24,38,0.12)",
+      boxShadow: "0 16px 34px rgba(16,24,38,0.15)",
       borderTopLeftRadius: 26,
       borderTopRightRadius: 26,
       borderBottomLeftRadius: 26,
       borderBottomRightRadius: 16,
     },
     futureMeBubble: {
-      background: "rgba(16,24,38,0.06)",
+      background: "rgba(255,255,255,0.74)",
       color: "#101826",
+      border: "1px solid rgba(16,24,38,0.06)",
       borderTopLeftRadius: 26,
       borderTopRightRadius: 26,
       borderBottomLeftRadius: 16,
@@ -618,11 +777,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     composerShell: {
       flex: "0 0 auto",
-      borderRadius: 22,
-      background: "rgba(255,255,255,0.72)",
-      border: "1px solid rgba(16,24,38,0.07)",
-      boxShadow: "0 20px 54px rgba(16,24,38,0.08)",
-      backdropFilter: "blur(18px)",
+      borderRadius: 26,
+      background:
+        "linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0.56))",
+      border: "1px solid rgba(16,24,38,0.08)",
+      boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
+      backdropFilter: "blur(22px)",
       overflow: "hidden",
     },
     composerRow: {
@@ -635,29 +795,30 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     composerTextarea: {
       flex: 1,
       width: "100%",
-      minHeight: 44,
-      maxHeight: 110,
+      minHeight: 46,
+      maxHeight: 120,
       resize: "none",
-      borderRadius: 18,
+      borderRadius: 20,
       border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.88)",
+      background: "rgba(255,255,255,0.90)",
       color: "#101826",
-      padding: "11px 12px",
+      padding: "12px 12px",
       lineHeight: 1.45,
       fontSize: 14,
       outline: "none",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
-      transition: "border-color 160ms ease, box-shadow 160ms ease",
+      transition: "border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
     },
     sendButton: {
-      minWidth: mobile ? "100%" : 80,
+      minWidth: mobile ? "100%" : 88,
       border: 0,
-      borderRadius: 18,
-      padding: "10px 14px",
+      borderRadius: 20,
+      padding: "11px 14px",
       background: "linear-gradient(180deg, #101826, #1b2636)",
       color: "#f5efe6",
-      fontWeight: 700,
-      boxShadow: "0 12px 22px rgba(16,24,38,0.16)",
+      fontWeight: 800,
+      boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+      transition: "transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease",
     },
     helper: {
       padding: "0 16px 16px",
@@ -686,10 +847,11 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       boxShadow: "0 -18px 50px rgba(16,24,38,0.16)",
       display: "grid",
       gap: 12,
+      backdropFilter: "blur(18px)",
     },
     sheetTitle: {
       fontSize: 18,
-      fontWeight: 800,
+      fontWeight: 900,
       letterSpacing: "-0.03em",
     },
     sheetSub: {
@@ -710,7 +872,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.08)",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      fontWeight: 600,
+      fontWeight: 700,
+      boxShadow: "0 10px 24px rgba(16,24,38,0.04)",
     },
     paywallBackdrop: {
       position: "fixed",
@@ -733,6 +896,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       boxShadow: "0 -18px 60px rgba(16,24,38,0.18)",
       display: "grid",
       gap: 12,
+      backdropFilter: "blur(18px)",
     },
     paywallHeader: {
       display: "grid",
@@ -740,7 +904,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     paywallTitle: {
       fontSize: 20,
-      fontWeight: 900,
+      fontWeight: 950,
       letterSpacing: "-0.04em",
     },
     paywallSub: {
@@ -753,6 +917,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: 14,
       background: "rgba(16,24,38,0.04)",
       border: "1px solid rgba(16,24,38,0.06)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
     },
     featureList: {
       display: "grid",
@@ -786,7 +951,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 16px",
       background: "#101826",
       color: "#f5efe6",
-      fontWeight: 800,
+      fontWeight: 900,
+      boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
     },
     ghostButton: {
       border: "1px solid rgba(16,24,38,0.08)",
@@ -794,7 +960,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 16px",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      fontWeight: 700,
+      fontWeight: 800,
+      boxShadow: "0 12px 24px rgba(16,24,38,0.05)",
     },
     hintLine: {
       fontSize: 12,
@@ -811,8 +978,9 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       color: isPro ? "#206f47" : "#7c5a2f",
       border: "1px solid rgba(16,24,38,0.06)",
       fontSize: 12,
-      fontWeight: 700,
+      fontWeight: 800,
       width: "fit-content",
+      boxShadow: "0 10px 26px rgba(16,24,38,0.04)",
     },
     sheetInput: {
       borderRadius: 16,
@@ -820,6 +988,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 14px",
       background: "rgba(255,255,255,0.92)",
       fontSize: 15,
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.7)",
     },
     sheetPrimary: {
       border: 0,
@@ -827,7 +996,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 16px",
       background: "#101826",
       color: "#f5efe6",
-      fontWeight: 800,
+      fontWeight: 900,
+      boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
     },
     sheetSecondary: {
       border: "1px solid rgba(16,24,38,0.08)",
@@ -835,12 +1005,24 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 16px",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      fontWeight: 700,
+      fontWeight: 800,
+      boxShadow: "0 12px 24px rgba(16,24,38,0.05)",
     },
     sheetHint: {
       fontSize: 12,
       color: "rgba(16,24,38,0.56)",
       lineHeight: 1.5,
+    },
+    accountGlow: {
+      position: "fixed",
+      inset: "auto 12px 12px auto",
+      width: 140,
+      height: 140,
+      borderRadius: 999,
+      background: "radial-gradient(circle, rgba(255,255,255,0.34), rgba(255,255,255,0))",
+      pointerEvents: "none",
+      zIndex: 0,
+      filter: "blur(10px)",
     },
   };
 }
@@ -1019,13 +1201,6 @@ export default function Page() {
       setMemorySummary(cloudMemory);
       window.localStorage.setItem(profileToMemoryKey(nextUser.email), cloudMemory);
     }
-
-    if (profile?.memory_summary === null || profile?.memory_summary === "") {
-      const fallback = buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
-      if (fallback) {
-        await saveCloudTurn(nextUser, "", "", fallback);
-      }
-    }
   }
 
   useEffect(() => {
@@ -1105,6 +1280,32 @@ export default function Page() {
     if (!memorySummary) return;
     setInput((prev) => prev || `Continuing from yesterday: ${memorySummary}. `);
     setTimeout(() => textareaRef.current?.focus(), 0);
+  }
+
+  async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
+    if (!supabase) return;
+
+    const now = new Date().toISOString();
+
+    const insertRes = await supabase.from("messages").insert([
+      { user_id: user.id, role: "me", text: userText },
+      { user_id: user.id, role: "future me", text: assistantText },
+    ]);
+
+    if (insertRes.error) {
+      console.error(insertRes.error);
+    }
+
+    const profileRes = await supabase.from("profiles").upsert({
+      user_id: user.id,
+      email: user.email ?? null,
+      memory_summary: memorySummary,
+      last_seen_at: now,
+    });
+
+    if (profileRes.error) {
+      console.error(profileRes.error);
+    }
   }
 
   async function sendMessage() {
@@ -1279,8 +1480,9 @@ export default function Page() {
           min-height: 100%;
           height: auto;
           background:
-            radial-gradient(circle at top left, rgba(255, 255, 255, 0.70), transparent 24%),
-            radial-gradient(circle at top right, rgba(255, 255, 255, 0.28), transparent 20%),
+            radial-gradient(circle at 10% 10%, rgba(134, 174, 255, 0.30), transparent 24%),
+            radial-gradient(circle at 90% 15%, rgba(255, 183, 191, 0.26), transparent 22%),
+            radial-gradient(circle at 50% 90%, rgba(117, 231, 193, 0.18), transparent 26%),
             linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
           color: #101826;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1330,6 +1532,10 @@ export default function Page() {
           }
         }
       `}</style>
+
+      <div style={styles.ambientGlowA} />
+      <div style={styles.ambientGlowB} />
+      <div style={styles.accountGlow} />
 
       {showSaveSheet && <div style={styles.sheetBackdrop} onClick={() => setShowSaveSheet(false)} />}
       {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
@@ -1473,6 +1679,34 @@ export default function Page() {
           </button>
         </header>
 
+        <section style={styles.heroCard}>
+          <div style={styles.heroShine} />
+          <div style={styles.heroTop}>
+            <span style={styles.heroBadge}>Future Me AI</span>
+            <span style={styles.heroBadgeAccent}>{user ? "Cloud synced" : "Private draft"}</span>
+          </div>
+
+          <div style={styles.heroTitle}>Your future self, but sharper.</div>
+          <div style={styles.heroSub}>
+            A private journal-like chat with memory, cloud sync, and a cleaner “wait what should I do next?” vibe.
+          </div>
+
+          <div style={styles.heroMetrics}>
+            <div style={styles.metricCard}>
+              <div style={styles.metricValue}>{user ? "On" : "Guest"}</div>
+              <div style={styles.metricLabel}>session</div>
+            </div>
+            <div style={styles.metricCard}>
+              <div style={styles.metricValue}>{remainingToday}</div>
+              <div style={styles.metricLabel}>free left today</div>
+            </div>
+            <div style={styles.metricCard}>
+              <div style={styles.metricValue}>{isPro ? "Pro" : "Free"}</div>
+              <div style={styles.metricLabel}>mode</div>
+            </div>
+          </div>
+        </section>
+
         <div style={styles.statusRow}>
           <span style={styles.pill}>
             <span
@@ -1521,6 +1755,7 @@ export default function Page() {
         </div>
 
         <section style={styles.threadCard}>
+          <div style={styles.threadCardGlow} />
           <div style={styles.threadHeader}>
             <div style={styles.threadLeft}>
               <div style={styles.avatar}>FM</div>
@@ -1554,7 +1789,7 @@ export default function Page() {
                       ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble),
                     }}
                   >
-                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45, overflowWrap: "anywhere" }}>
+                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, overflowWrap: "anywhere" }}>
                       {message.text}
                     </div>
                     <div style={styles.timestamp}>{message.time}</div>
