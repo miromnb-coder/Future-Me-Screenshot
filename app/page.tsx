@@ -34,11 +34,18 @@ type MessageRow = {
   created_at: string;
 };
 
-const STORAGE_KEY = "future-me-v6";
-const MEMORY_SUMMARY_KEY = "future-me-memory-summary";
+type ProfileRow = {
+  user_id: string;
+  email: string | null;
+  memory_summary: string | null;
+  last_seen_at: string | null;
+};
+
+const STORAGE_KEY = "future-me-draft";
+const MEMORY_SUMMARY_KEY = "future-me-memory";
 const FREE_LIMIT = 5;
 const MAX_MESSAGES = 50;
-const MIN_REPLY_DELAY_MS = 850;
+const MIN_REPLY_DELAY_MS = 650;
 const EMAIL_COOLDOWN_MS = 60_000;
 const EMAIL_COOLDOWN_KEY = "future-me-email-cooldown-until";
 
@@ -46,15 +53,23 @@ const WELCOME_MESSAGE: Message = {
   id: "welcome",
   role: "future me",
   text: "Write one thought. I’ll keep the conversation going.",
-  time: "now"
+  time: "now",
 };
 
 const moodLabels: Record<Mood, string> = {
   calm: "Calm",
   honest: "Honest",
   direct: "Direct",
-  wise: "Wise"
+  wise: "Wise",
 };
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -63,7 +78,7 @@ function uid() {
 function formatClock() {
   return new Date().toLocaleTimeString([], {
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
   });
 }
 
@@ -111,104 +126,92 @@ function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean, lastA
     calm: {
       en: [
         "Pause first. You do not need to solve it in one move.",
-        "The answer is usually quieter than the fear around it."
+        "The answer is usually quieter than the fear around it.",
       ],
       fi: [
         "Pysähdy ensin. Tätä ei tarvitse ratkaista yhdellä liikkeellä.",
-        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko."
-      ]
+        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko.",
+      ],
     },
     honest: {
       en: [
         "You are not really asking for information. You are asking for permission.",
-        "The cost matters more than the option itself."
+        "The cost matters more than the option itself.",
       ],
       fi: [
         "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
-        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto."
-      ]
+        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto.",
+      ],
     },
     direct: {
       en: [
         "This is simpler than it feels. Decide, then move.",
-        "The hesitation is the real problem, not the choice."
+        "The hesitation is the real problem, not the choice.",
       ],
       fi: [
         "Tämä on yksinkertaisempi kuin miltä tuntuu. Päätä ja liiku.",
-        "Epäröinti on varsinainen ongelma, ei valinta."
-      ]
+        "Epäröinti on varsinainen ongelma, ei valinta.",
+      ],
     },
     wise: {
       en: [
         "The real question is what this changes, not whether it works.",
-        "The hidden cost is usually the part worth paying attention to."
+        "The hidden cost is usually the part worth paying attention to.",
       ],
       fi: [
         "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa.",
-        "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota."
-      ]
-    }
+        "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota.",
+      ],
+    },
   };
 
   const proSets: Record<Mood, { en: string[]; fi: string[] }> = {
     calm: {
       en: [
         "You do not need more force. You need a cleaner decision.",
-        "The fact that this still feels heavy is the clue."
+        "The fact that this still feels heavy is the clue.",
       ],
       fi: [
         "Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.",
-        "Se että tämä tuntuu yhä raskaalta on jo vihje."
-      ]
+        "Se että tämä tuntuu yhä raskaalta on jo vihje.",
+      ],
     },
     honest: {
       en: [
         "You already know the answer, you are just negotiating with it.",
-        "What you call uncertainty is often just attachment to the easier path."
+        "What you call uncertainty is often just attachment to the easier path.",
       ],
       fi: [
         "Tiedät jo vastauksen, neuvottelet vain sen kanssa.",
-        "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun."
-      ]
+        "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun.",
+      ],
     },
     direct: {
       en: [
         "Choose the thing you will respect tomorrow.",
-        "Do not optimize for comfort. Optimize for the version of you that has to live with it."
+        "Do not optimize for comfort. Optimize for the version of you that has to live with it.",
       ],
       fi: [
         "Valitse se, mitä kunnioitat huomenna.",
-        "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa."
-      ]
+        "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa.",
+      ],
     },
     wise: {
       en: [
         "The tradeoff is the point. Once you name it, the decision gets smaller.",
-        "You are not choosing between good and bad. You are choosing which cost is worth paying."
+        "You are not choosing between good and bad. You are choosing which cost is worth paying.",
       ],
       fi: [
         "Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.",
-        "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa."
-      ]
-    }
+        "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa.",
+      ],
+    },
   };
 
   const source = (isPro ? proSets : freeSets)[mood];
   const pool = isFinnish ? source.fi : source.en;
   const score = [...seed].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
   return pool[Math.abs(score) % pool.length];
-}
-
-function buildMemory(messages: Message[], mood: Mood, memorySummary = "") {
-  const recentUserMessages = messages
-    .filter((m) => m.role === "me")
-    .slice(-4)
-    .map((m) => m.text)
-    .join(" | ");
-
-  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${
-    memorySummary ? ` | Summary: ${memorySummary}` : ""
-  }`.slice(0, 240);
 }
 
 function buildMemorySummary(messages: Message[]) {
@@ -222,15 +225,20 @@ function buildMemorySummary(messages: Message[]) {
   return userTexts.slice(0, 240);
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+function buildMemoryPrompt(messages: Message[], mood: Mood, memorySummary = "") {
+  const recentUserMessages = messages
+    .filter((m) => m.role === "me")
+    .slice(-4)
+    .map((m) => m.text)
+    .join(" | ");
 
-const supabase: SupabaseClient | null =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${
+    memorySummary ? ` | Summary: ${memorySummary}` : ""
+  }`.slice(0, 240);
+}
 
-function readDraft(key: string): PersistedState | null {
+function loadDraft(key: string): PersistedState | null {
   if (typeof window === "undefined") return null;
-
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
@@ -242,33 +250,78 @@ function readDraft(key: string): PersistedState | null {
   }
 }
 
-function writeDraft(key: string, value: PersistedState) {
+function saveDraft(key: string, value: PersistedState) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
-async function loadDbMessages(client: SupabaseClient, userId: string): Promise<Message[] | null> {
-  const { data, error } = await client
-    .from("messages")
-    .select("id, role, text, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true });
+function profileToMemoryKey(email?: string | null) {
+  return email ? `future-me-memory:${email.trim().toLowerCase()}` : MEMORY_SUMMARY_KEY;
+}
 
-  if (error) {
-    console.error(error);
-    return null;
-  }
+function profileToDraftKey(email?: string | null) {
+  return email ? `future-me-draft:${email.trim().toLowerCase()}` : STORAGE_KEY;
+}
 
-  const rows = (data ?? []) as MessageRow[];
-  return rows.map((m) => ({
+function normalizeMessageRows(rows: MessageRow[] | null | undefined): Message[] {
+  return (rows ?? []).map((m) => ({
     id: m.id,
     role: m.role,
     text: m.text,
     time: new Date(m.created_at).toLocaleTimeString([], {
       hour: "2-digit",
-      minute: "2-digit"
-    })
+      minute: "2-digit",
+    }),
   }));
+}
+
+async function loadCloudState(userId: string) {
+  if (!supabase) return { profile: null as ProfileRow | null, messages: [] as Message[] };
+
+  const [profileRes, messagesRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("user_id,email,memory_summary,last_seen_at")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("messages")
+      .select("id,role,text,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(80),
+  ]);
+
+  const profile = (profileRes.data ?? null) as ProfileRow | null;
+  const messages = normalizeMessageRows((messagesRes.data ?? []) as MessageRow[]);
+
+  return { profile, messages };
+}
+
+async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
+  if (!supabase) return;
+
+  const now = new Date().toISOString();
+
+  const insertRes = await supabase.from("messages").insert([
+    { user_id: user.id, role: "me", text: userText },
+    { user_id: user.id, role: "future me", text: assistantText },
+  ]);
+
+  if (insertRes.error) {
+    console.error(insertRes.error);
+  }
+
+  const profileRes = await supabase.from("profiles").upsert({
+    user_id: user.id,
+    email: user.email ?? null,
+    memory_summary: memorySummary,
+    last_seen_at: now,
+  });
+
+  if (profileRes.error) {
+    console.error(profileRes.error);
+  }
 }
 
 function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProperties> {
@@ -284,7 +337,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
         "radial-gradient(circle at top left, rgba(255,255,255,0.70), transparent 24%), radial-gradient(circle at top right, rgba(255,255,255,0.28), transparent 20%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
       color: "#101826",
       fontFamily:
-        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     },
     shell: {
       minHeight: "100dvh",
@@ -294,7 +347,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       display: "flex",
       flexDirection: "column",
       gap: 12,
-      paddingBottom: 18
+      paddingBottom: 18,
     },
     topBar: {
       flex: "0 0 auto",
@@ -305,7 +358,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "8px 2px 8px",
       backdropFilter: "blur(16px)",
       background: "linear-gradient(180deg, rgba(244,239,231,0.96), rgba(244,239,231,0.80))",
-      borderRadius: 18
+      borderRadius: 18,
     },
     topTitle: {
       display: "flex",
@@ -313,16 +366,16 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       alignItems: "center",
       gap: 2,
       textAlign: "center",
-      flex: 1
+      flex: 1,
     },
     brand: {
       fontSize: 18,
       fontWeight: 800,
-      letterSpacing: "-0.035em"
+      letterSpacing: "-0.035em",
     },
     brandSub: {
       fontSize: 12,
-      color: "rgba(16,24,38,0.56)"
+      color: "rgba(16,24,38,0.56)",
     },
     iconButton: {
       width: 42,
@@ -334,14 +387,14 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       display: "grid",
       placeItems: "center",
       cursor: "pointer",
-      boxShadow: "0 12px 26px rgba(16,24,38,0.05)"
+      boxShadow: "0 12px 26px rgba(16,24,38,0.05)",
     },
     statusRow: {
       flex: "0 0 auto",
       display: "flex",
       flexWrap: "wrap",
       gap: 8,
-      alignItems: "center"
+      alignItems: "center",
     },
     pill: {
       display: "inline-flex",
@@ -354,7 +407,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       color: "rgba(16,24,38,0.72)",
       fontSize: 12,
       letterSpacing: "0.01em",
-      backdropFilter: "blur(12px)"
+      backdropFilter: "blur(12px)",
     },
     pillAction: {
       border: "1px solid rgba(16,24,38,0.06)",
@@ -363,13 +416,13 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "8px 12px",
       borderRadius: 999,
       fontSize: 12,
-      fontWeight: 600
+      fontWeight: 600,
     },
     moodRow: {
       flex: "0 0 auto",
       display: "flex",
       gap: 8,
-      flexWrap: "wrap"
+      flexWrap: "wrap",
     },
     moodButton: {
       border: "1px solid rgba(16,24,38,0.08)",
@@ -378,7 +431,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "9px 13px",
       borderRadius: 999,
       fontSize: 12,
-      fontWeight: 600
+      fontWeight: 600,
     },
     moodButtonActive: {
       border: "1px solid rgba(16,24,38,0.10)",
@@ -387,7 +440,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "9px 13px",
       borderRadius: 999,
       fontSize: 12,
-      fontWeight: 700
+      fontWeight: 700,
     },
     memoryCard: {
       borderRadius: 20,
@@ -395,17 +448,17 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       background: "rgba(16,24,38,0.05)",
       border: "1px solid rgba(16,24,38,0.06)",
       display: "grid",
-      gap: 6
+      gap: 6,
     },
     memoryTitle: {
       fontSize: 13,
       fontWeight: 800,
-      letterSpacing: "-0.02em"
+      letterSpacing: "-0.02em",
     },
     memoryText: {
       fontSize: 13,
       lineHeight: 1.5,
-      color: "rgba(16,24,38,0.72)"
+      color: "rgba(16,24,38,0.72)",
     },
     memoryButton: {
       border: 0,
@@ -414,7 +467,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       background: "#101826",
       color: "#f5efe6",
       fontWeight: 700,
-      width: "fit-content"
+      width: "fit-content",
     },
     threadCard: {
       display: "flex",
@@ -425,7 +478,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
       overflow: "hidden",
       backdropFilter: "blur(18px)",
-      minHeight: mobile ? 320 : 420
+      minHeight: mobile ? 320 : 420,
     },
     threadHeader: {
       flex: "0 0 auto",
@@ -436,12 +489,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: 16,
       borderBottom: "1px solid rgba(16,24,38,0.06)",
       background: "rgba(255,255,255,0.34)",
-      backdropFilter: "blur(10px)"
+      backdropFilter: "blur(10px)",
     },
     threadLeft: {
       display: "flex",
       alignItems: "center",
-      gap: 12
+      gap: 12,
     },
     avatar: {
       width: 38,
@@ -453,21 +506,21 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       placeItems: "center",
       fontSize: 14,
       fontWeight: 800,
-      boxShadow: "0 10px 18px rgba(16,24,38,0.14)"
+      boxShadow: "0 10px 18px rgba(16,24,38,0.14)",
     },
     threadText: {
       display: "flex",
       flexDirection: "column",
-      gap: 2
+      gap: 2,
     },
     threadName: {
       fontSize: 16,
       fontWeight: 800,
-      letterSpacing: "-0.03em"
+      letterSpacing: "-0.03em",
     },
     threadMeta: {
       fontSize: 12,
-      color: "rgba(16,24,38,0.56)"
+      color: "rgba(16,24,38,0.56)",
     },
     liveChip: {
       display: "inline-flex",
@@ -478,42 +531,40 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       background: "rgba(16,24,38,0.05)",
       border: "1px solid rgba(16,24,38,0.06)",
       fontSize: 12,
-      color: "rgba(16,24,38,0.7)"
+      color: "rgba(16,24,38,0.7)",
     },
     liveDot: {
       width: 8,
       height: 8,
       borderRadius: 999,
       background: isPro ? "#4caf7a" : "#8d6b3d",
-      boxShadow: isPro ? "0 0 0 5px rgba(76,175,122,0.16)" : "0 0 0 5px rgba(141,107,61,0.14)"
+      boxShadow: isPro
+        ? "0 0 0 5px rgba(76,175,122,0.16)"
+        : "0 0 0 5px rgba(141,107,61,0.14)",
     },
     threadBody: {
       flex: "1 1 auto",
       minHeight: 0,
       display: "flex",
       flexDirection: "column",
-      padding: mobile ? 12 : 16
+      padding: mobile ? 12 : 16,
     },
     stream: {
-      flex: "1 1 auto",
-      minHeight: 0,
-      overflowY: "visible",
       display: "flex",
       flexDirection: "column",
       gap: 10,
-      paddingRight: 0,
-      paddingBottom: 4
+      paddingBottom: 4,
     },
     messageRow: {
       display: "flex",
       width: "100%",
-      animation: "floatIn 220ms ease both"
+      animation: "floatIn 220ms ease both",
     },
     meRow: {
-      justifyContent: "flex-end"
+      justifyContent: "flex-end",
     },
     futureMeRow: {
-      justifyContent: "flex-start"
+      justifyContent: "flex-start",
     },
     messageBubble: {
       maxWidth: mobile ? "88%" : "74%",
@@ -527,7 +578,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       overflowWrap: "anywhere",
       letterSpacing: "-0.005em",
       position: "relative",
-      boxSizing: "border-box"
+      boxSizing: "border-box",
     },
     meBubble: {
       background: "linear-gradient(180deg, #101826, #141f2f)",
@@ -536,7 +587,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       borderTopLeftRadius: 26,
       borderTopRightRadius: 26,
       borderBottomLeftRadius: 26,
-      borderBottomRightRadius: 16
+      borderBottomRightRadius: 16,
     },
     futureMeBubble: {
       background: "rgba(16,24,38,0.06)",
@@ -544,17 +595,17 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       borderTopLeftRadius: 26,
       borderTopRightRadius: 26,
       borderBottomLeftRadius: 16,
-      borderBottomRightRadius: 26
+      borderBottomRightRadius: 26,
     },
     timestamp: {
       marginTop: 6,
       fontSize: 11,
-      color: "rgba(16,24,38,0.52)"
+      color: "rgba(16,24,38,0.52)",
     },
     typingRow: {
       display: "flex",
       justifyContent: "flex-start",
-      animation: "floatIn 180ms ease both"
+      animation: "floatIn 180ms ease both",
     },
     typingBubble: {
       padding: "12px 14px",
@@ -563,7 +614,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       color: "rgba(16,24,38,0.58)",
       fontSize: 14,
       letterSpacing: "0.02em",
-      animation: "pulse 1.3s ease-in-out infinite"
+      animation: "pulse 1.3s ease-in-out infinite",
     },
     composerShell: {
       flex: "0 0 auto",
@@ -572,14 +623,14 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 20px 54px rgba(16,24,38,0.08)",
       backdropFilter: "blur(18px)",
-      overflow: "hidden"
+      overflow: "hidden",
     },
     composerRow: {
       display: "flex",
       gap: 8,
       alignItems: "flex-end",
       padding: 12,
-      flexDirection: mobile ? "column" : "row"
+      flexDirection: mobile ? "column" : "row",
     },
     composerTextarea: {
       flex: 1,
@@ -596,7 +647,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       fontSize: 14,
       outline: "none",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
-      transition: "border-color 160ms ease, box-shadow 160ms ease"
+      transition: "border-color 160ms ease, box-shadow 160ms ease",
     },
     sendButton: {
       minWidth: mobile ? "100%" : 80,
@@ -606,20 +657,20 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       background: "linear-gradient(180deg, #101826, #1b2636)",
       color: "#f5efe6",
       fontWeight: 700,
-      boxShadow: "0 12px 22px rgba(16,24,38,0.16)"
+      boxShadow: "0 12px 22px rgba(16,24,38,0.16)",
     },
     helper: {
       padding: "0 16px 16px",
       fontSize: 12,
       color: "rgba(16,24,38,0.54)",
-      lineHeight: 1.5
+      lineHeight: 1.5,
     },
     sheetBackdrop: {
       position: "fixed",
       inset: 0,
       background: "rgba(15,23,38,0.24)",
       backdropFilter: "blur(4px)",
-      zIndex: 40
+      zIndex: 40,
     },
     sheet: {
       position: "fixed",
@@ -634,22 +685,22 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: 16,
       boxShadow: "0 -18px 50px rgba(16,24,38,0.16)",
       display: "grid",
-      gap: 12
+      gap: 12,
     },
     sheetTitle: {
       fontSize: 18,
       fontWeight: 800,
-      letterSpacing: "-0.03em"
+      letterSpacing: "-0.03em",
     },
     sheetSub: {
       marginTop: 3,
       fontSize: 12,
       color: "rgba(16,24,38,0.56)",
-      lineHeight: 1.5
+      lineHeight: 1.5,
     },
     sheetGroup: {
       display: "grid",
-      gap: 8
+      gap: 8,
     },
     sheetButton: {
       width: "100%",
@@ -659,14 +710,14 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.08)",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      fontWeight: 600
+      fontWeight: 600,
     },
     paywallBackdrop: {
       position: "fixed",
       inset: 0,
       background: "rgba(15,23,38,0.28)",
       backdropFilter: "blur(8px)",
-      zIndex: 60
+      zIndex: 60,
     },
     paywall: {
       position: "fixed",
@@ -681,32 +732,32 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: 16,
       boxShadow: "0 -18px 60px rgba(16,24,38,0.18)",
       display: "grid",
-      gap: 12
+      gap: 12,
     },
     paywallHeader: {
       display: "grid",
-      gap: 4
+      gap: 4,
     },
     paywallTitle: {
       fontSize: 20,
       fontWeight: 900,
-      letterSpacing: "-0.04em"
+      letterSpacing: "-0.04em",
     },
     paywallSub: {
       fontSize: 13,
       lineHeight: 1.5,
-      color: "rgba(16,24,38,0.62)"
+      color: "rgba(16,24,38,0.62)",
     },
     featureCard: {
       borderRadius: 20,
       padding: 14,
       background: "rgba(16,24,38,0.04)",
-      border: "1px solid rgba(16,24,38,0.06)"
+      border: "1px solid rgba(16,24,38,0.06)",
     },
     featureList: {
       display: "grid",
       gap: 8,
-      marginTop: 4
+      marginTop: 4,
     },
     featureItem: {
       display: "flex",
@@ -714,7 +765,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       gap: 10,
       fontSize: 14,
       lineHeight: 1.5,
-      color: "#101826"
+      color: "#101826",
     },
     featureDot: {
       width: 8,
@@ -722,12 +773,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       marginTop: 6,
       borderRadius: 999,
       background: "#101826",
-      flex: "0 0 auto"
+      flex: "0 0 auto",
     },
     paywallButtons: {
       display: "flex",
       gap: 10,
-      flexWrap: "wrap"
+      flexWrap: "wrap",
     },
     proButton: {
       border: 0,
@@ -735,7 +786,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 16px",
       background: "#101826",
       color: "#f5efe6",
-      fontWeight: 800
+      fontWeight: 800,
     },
     ghostButton: {
       border: "1px solid rgba(16,24,38,0.08)",
@@ -743,12 +794,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 16px",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      fontWeight: 700
+      fontWeight: 700,
     },
     hintLine: {
       fontSize: 12,
       color: "rgba(16,24,38,0.56)",
-      lineHeight: 1.5
+      lineHeight: 1.5,
     },
     freeTag: {
       display: "inline-flex",
@@ -761,14 +812,14 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       border: "1px solid rgba(16,24,38,0.06)",
       fontSize: 12,
       fontWeight: 700,
-      width: "fit-content"
+      width: "fit-content",
     },
     sheetInput: {
       borderRadius: 16,
       border: "1px solid rgba(16,24,38,0.08)",
       padding: "12px 14px",
       background: "rgba(255,255,255,0.92)",
-      fontSize: 15
+      fontSize: 15,
     },
     sheetPrimary: {
       border: 0,
@@ -776,7 +827,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 16px",
       background: "#101826",
       color: "#f5efe6",
-      fontWeight: 800
+      fontWeight: 800,
     },
     sheetSecondary: {
       border: "1px solid rgba(16,24,38,0.08)",
@@ -784,13 +835,13 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       padding: "12px 16px",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      fontWeight: 700
+      fontWeight: 700,
     },
     sheetHint: {
       fontSize: 12,
       color: "rgba(16,24,38,0.56)",
-      lineHeight: 1.5
-    }
+      lineHeight: 1.5,
+    },
   };
 }
 
@@ -827,14 +878,15 @@ export default function Page() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const remainingToday = usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
+  const remainingToday =
+    usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
+
   const cooldownLeftMs = Math.max(0, emailCooldownUntil - Date.now());
   const cooldownLeftSec = Math.ceil(cooldownLeftMs / 1000);
   const emailDisabled = sendingEmail || cooldownLeftMs > 0;
 
-  const activeDraftKey = useMemo(() => {
-    return user?.email ? `future-me:${user.email.trim().toLowerCase()}` : STORAGE_KEY;
-  }, [user?.email]);
+  const draftKey = useMemo(() => profileToDraftKey(user?.email), [user?.email]);
+  const memoryKey = useMemo(() => profileToMemoryKey(user?.email), [user?.email]);
 
   useEffect(() => {
     const update = () => setMobile(window.innerWidth < 900);
@@ -850,34 +902,31 @@ export default function Page() {
   useEffect(() => {
     const initialCooldown = getEmailCooldownUntil();
     setEmailCooldownUntilState(initialCooldown);
-
     const timer = window.setInterval(() => {
       setEmailCooldownUntilState(getEmailCooldownUntil());
     }, 1000);
-
     return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<PersistedState>;
-        if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
-          setMessages(parsed.messages.slice(-MAX_MESSAGES));
+      const draft = loadDraft(STORAGE_KEY);
+      if (draft) {
+        if (Array.isArray(draft.messages) && draft.messages.length > 0) {
+          setMessages(draft.messages.slice(-MAX_MESSAGES));
         }
-        if (typeof parsed.input === "string") setInput(parsed.input);
-        if (parsed.mood && ["calm", "honest", "direct", "wise"].includes(parsed.mood)) {
-          setMood(parsed.mood as Mood);
+        if (typeof draft.input === "string") setInput(draft.input);
+        if (draft.mood && ["calm", "honest", "direct", "wise"].includes(draft.mood)) {
+          setMood(draft.mood as Mood);
         }
-        if (typeof parsed.isPro === "boolean") setIsPro(parsed.isPro);
-        if (parsed.usage) setUsage(normalizeUsage(parsed.usage));
+        if (typeof draft.isPro === "boolean") setIsPro(draft.isPro);
+        if (draft.usage) setUsage(normalizeUsage(draft.usage));
       }
 
-      const lastEmail = window.localStorage.getItem("future-me-email");
-      if (lastEmail) setEmailInput(lastEmail);
+      const savedEmail = window.localStorage.getItem("future-me-email") || "";
+      if (savedEmail) setEmailInput(savedEmail);
 
-      const savedMemory = window.localStorage.getItem(MEMORY_SUMMARY_KEY) || "";
+      const savedMemory = window.localStorage.getItem(memoryKey) || "";
       if (savedMemory) setMemorySummary(savedMemory);
 
       const params = new URLSearchParams(window.location.search);
@@ -892,34 +941,27 @@ export default function Page() {
     } finally {
       setHydrated(true);
     }
-  }, []);
+  }, [memoryKey]);
 
   useEffect(() => {
     if (!hydrated) return;
-    writeDraft(activeDraftKey, {
+    saveDraft(draftKey, {
       messages: messages.slice(-MAX_MESSAGES),
       input,
       mood,
       isPro,
-      usage
+      usage,
     });
-  }, [messages, input, mood, isPro, usage, hydrated, activeDraftKey]);
+    window.localStorage.setItem(memoryKey, memorySummary);
+  }, [draftKey, hydrated, input, isPro, messages, mood, memoryKey, memorySummary, usage]);
 
   useEffect(() => {
-    if (!hydrated) return;
-
-    const summary = buildMemorySummary(messages);
-    if (!summary) return;
-
-    setMemorySummary(summary);
-    window.localStorage.setItem(MEMORY_SUMMARY_KEY, summary);
-  }, [messages, hydrated]);
-
-  useEffect(() => {
+    const derived = buildMemorySummary(messages);
+    setMemorySummary(derived);
     if (user?.email) {
-      window.localStorage.setItem("future-me-email", user.email);
+      window.localStorage.setItem(memoryKey, derived);
     }
-  }, [user?.email]);
+  }, [messages, memoryKey, user?.email]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -937,67 +979,86 @@ export default function Page() {
     };
   }, [menuOpen, paywallOpen, showSaveSheet]);
 
+  async function syncSession(nextUser: User | null) {
+    setUser(nextUser);
+
+    if (!nextUser) {
+      const guestDraft = loadDraft(STORAGE_KEY);
+      if (guestDraft) {
+        if (Array.isArray(guestDraft.messages) && guestDraft.messages.length > 0) {
+          setMessages(guestDraft.messages.slice(-MAX_MESSAGES));
+        } else {
+          setMessages([WELCOME_MESSAGE]);
+        }
+        if (typeof guestDraft.input === "string") setInput(guestDraft.input);
+        if (guestDraft.mood && ["calm", "honest", "direct", "wise"].includes(guestDraft.mood)) {
+          setMood(guestDraft.mood as Mood);
+        }
+        if (typeof guestDraft.isPro === "boolean") setIsPro(guestDraft.isPro);
+        if (guestDraft.usage) setUsage(normalizeUsage(guestDraft.usage));
+      }
+      const savedMemory = window.localStorage.getItem(MEMORY_SUMMARY_KEY) || "";
+      setMemorySummary(savedMemory);
+      setEmailInput("");
+      return;
+    }
+
+    setEmailInput(nextUser.email ?? "");
+
+    const { profile, messages: cloudMessages } = await loadCloudState(nextUser.id);
+
+    if (cloudMessages.length > 0) {
+      setMessages(cloudMessages.slice(-MAX_MESSAGES));
+    }
+
+    const cloudMemory =
+      profile?.memory_summary?.trim() ||
+      buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
+
+    if (cloudMemory) {
+      setMemorySummary(cloudMemory);
+      window.localStorage.setItem(profileToMemoryKey(nextUser.email), cloudMemory);
+    }
+
+    if (profile?.memory_summary === null || profile?.memory_summary === "") {
+      const fallback = buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
+      if (fallback) {
+        await saveCloudTurn(nextUser, "", "", fallback);
+      }
+    }
+  }
+
   useEffect(() => {
     if (!supabase) return;
 
-    const hydrateAuth = async () => {
+    const hydrate = async () => {
       const { data } = await supabase.auth.getSession();
-      const sessionUser = data.session?.user ?? null;
-      setUser(sessionUser);
-
-      if (sessionUser?.email) {
-        setEmailInput(sessionUser.email);
-        window.localStorage.setItem("future-me-email", sessionUser.email);
-
-        const emailDraft = readDraft(`future-me:${sessionUser.email.trim().toLowerCase()}`);
-        if (emailDraft) {
-          if (Array.isArray(emailDraft.messages) && emailDraft.messages.length > 0) {
-            setMessages(emailDraft.messages.slice(-MAX_MESSAGES));
-          }
-          if (typeof emailDraft.input === "string") setInput(emailDraft.input);
-          if (emailDraft.mood && ["calm", "honest", "direct", "wise"].includes(emailDraft.mood)) {
-            setMood(emailDraft.mood as Mood);
-          }
-          if (typeof emailDraft.isPro === "boolean") setIsPro(emailDraft.isPro);
-        }
-
-        const dbMessages = await loadDbMessages(supabase, sessionUser.id);
-        if (dbMessages && dbMessages.length > 0) {
-          setMessages(dbMessages.slice(-MAX_MESSAGES));
-        }
-      }
+      await syncSession(data.session?.user ?? null);
     };
 
-    void hydrateAuth();
+    void hydrate();
 
-    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const sessionUser = session?.user ?? null;
-      setUser(sessionUser);
-
-      if (!sessionUser?.email) return;
-
-      window.localStorage.setItem("future-me-email", sessionUser.email);
-      setEmailInput(sessionUser.email);
-
-      const emailDraft = readDraft(`future-me:${sessionUser.email.trim().toLowerCase()}`);
-      if (emailDraft?.messages?.length) {
-        setMessages(emailDraft.messages.slice(-MAX_MESSAGES));
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        void syncSession(null);
+        return;
       }
 
-      const dbMessages = await loadDbMessages(supabase, sessionUser.id);
-      if (dbMessages && dbMessages.length > 0) {
-        setMessages(dbMessages.slice(-MAX_MESSAGES));
-      }
+      setTimeout(() => {
+        void syncSession(session?.user ?? null);
+      }, 0);
     });
 
     return () => subscription.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const styles = useMemo(() => createStyles(mobile, isPro), [mobile, isPro]);
 
   function incrementUsage() {
     const today = todayKey();
-    const nextUsage = usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
+    const nextUsage =
+      usage.date === today ? { date: today, count: usage.count + 1 } : { date: today, count: 1 };
     setUsage(nextUsage);
     return nextUsage;
   }
@@ -1023,8 +1084,8 @@ export default function Page() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`
-      }
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
+      },
     });
 
     if (error) {
@@ -1046,18 +1107,6 @@ export default function Page() {
     setTimeout(() => textareaRef.current?.focus(), 0);
   }
 
-  async function insertMessage(userId: string, role: Role, text: string) {
-    if (!supabase) return;
-
-    const { error } = await supabase.from("messages").insert({
-      user_id: userId,
-      role,
-      text
-    });
-
-    if (error) console.error(error);
-  }
-
   async function sendMessage() {
     if (loading) return;
 
@@ -1073,10 +1122,12 @@ export default function Page() {
       id: uid(),
       role: "me",
       text: trimmed,
-      time: formatClock()
+      time: formatClock(),
     };
 
     const nextMessages = [...messages, userMessage].slice(-MAX_MESSAGES);
+    const nextMemorySummary = buildMemorySummary(nextMessages);
+
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
@@ -1084,7 +1135,7 @@ export default function Page() {
     if (!isPro) incrementUsage();
 
     const startedAt = Date.now();
-    const memory = buildMemory(nextMessages, mood, memorySummary);
+    const memoryPrompt = buildMemoryPrompt(nextMessages, mood, nextMemorySummary);
 
     try {
       const response = await fetch("/api/generate", {
@@ -1094,12 +1145,15 @@ export default function Page() {
           messages: nextMessages,
           mood,
           isPro,
-          memory
-        })
+          memorySummary: nextMemorySummary,
+          memory: memoryPrompt,
+        }),
       });
 
       const data = await response.json().catch(() => ({}));
-      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+      const lastAssistant =
+        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+
       const replyText =
         typeof data?.reply === "string" && data.reply.trim()
           ? data.reply.trim()
@@ -1114,14 +1168,15 @@ export default function Page() {
         id: uid(),
         role: "future me",
         text: replyText,
-        time: formatClock()
+        time: formatClock(),
       };
 
-      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
+      const finalMessages = [...nextMessages, assistantMessage].slice(-MAX_MESSAGES);
+      setMessages(finalMessages);
+      setMemorySummary(buildMemorySummary(finalMessages));
 
-      if (user?.id) {
-        await insertMessage(user.id, "me", trimmed);
-        await insertMessage(user.id, "future me", replyText);
+      if (user) {
+        await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
       }
     } catch {
       const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
@@ -1134,14 +1189,15 @@ export default function Page() {
         id: uid(),
         role: "future me",
         text: replyText,
-        time: formatClock()
+        time: formatClock(),
       };
 
-      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
+      const finalMessages = [...nextMessages, assistantMessage].slice(-MAX_MESSAGES);
+      setMessages(finalMessages);
+      setMemorySummary(buildMemorySummary(finalMessages));
 
-      if (user?.id) {
-        await insertMessage(user.id, "me", trimmed);
-        await insertMessage(user.id, "future me", replyText);
+      if (user) {
+        await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
       }
     } finally {
       setLoading(false);
@@ -1152,7 +1208,6 @@ export default function Page() {
   function startOver() {
     window.localStorage.removeItem(STORAGE_KEY);
     window.localStorage.removeItem(MEMORY_SUMMARY_KEY);
-    setMemorySummary("");
     setMessages([WELCOME_MESSAGE]);
     setInput("");
     setMood("honest");
@@ -1162,6 +1217,7 @@ export default function Page() {
     setShowSaveSheet(false);
     setIsPro(false);
     setUsage(defaultUsage());
+    setMemorySummary("");
     textareaRef.current?.focus();
   }
 
@@ -1174,7 +1230,7 @@ export default function Page() {
       if (navigator.share) {
         await navigator.share({
           title: "Future Me",
-          text: transcript
+          text: transcript,
         });
         return;
       }
@@ -1185,6 +1241,12 @@ export default function Page() {
     } catch {
       // ignore
     }
+  }
+
+  async function signOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setMenuOpen(false);
   }
 
   function openUpgrade() {
@@ -1331,6 +1393,11 @@ export default function Page() {
             <button style={styles.sheetButton} onClick={openUpgrade}>
               Upgrade to Pro
             </button>
+            {user ? (
+              <button style={styles.sheetButton} onClick={() => void signOut()}>
+                Sign out
+              </button>
+            ) : null}
             <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
               Close
             </button>
@@ -1398,7 +1465,7 @@ export default function Page() {
 
           <div style={styles.topTitle}>
             <div style={styles.brand}>Future Me</div>
-            <div style={styles.brandSub}>free-form chat · persistent context</div>
+            <div style={styles.brandSub}>{user ? "synced cloud memory" : "guest mode · local memory"}</div>
           </div>
 
           <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
@@ -1408,10 +1475,17 @@ export default function Page() {
 
         <div style={styles.statusRow}>
           <span style={styles.pill}>
-            <span style={{ width: 7, height: 7, borderRadius: 999, background: isPro ? "#4caf7a" : "#8d6b3d" }} />
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: isPro ? "#4caf7a" : "#8d6b3d",
+              }}
+            />
             {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
           </span>
-          <span style={styles.pill}>remembers context</span>
+          <span style={styles.pill}>{user ? "synced to cloud" : "guest mode"}</span>
           {!user ? (
             <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
               Save with email
@@ -1471,13 +1545,13 @@ export default function Page() {
                     display: "flex",
                     width: "100%",
                     justifyContent: message.role === "me" ? "flex-end" : "flex-start",
-                    animation: "floatIn 220ms ease both"
+                    animation: "floatIn 220ms ease both",
                   }}
                 >
                   <div
                     style={{
                       ...styles.messageBubble,
-                      ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble)
+                      ...(message.role === "me" ? styles.meBubble : styles.futureMeBubble),
                     }}
                   >
                     <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.45, overflowWrap: "anywhere" }}>
