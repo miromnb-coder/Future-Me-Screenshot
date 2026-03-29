@@ -43,6 +43,7 @@ const welcomeMessage: Message = {
 
 const GUEST_KEY = "future-me:guest";
 const LAST_EMAIL_KEY = "future-me-email";
+const MAX_MESSAGES = 50;
 
 function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -141,16 +142,11 @@ function buildMemory(messages: Message[], mood: Mood) {
   return `Mood: ${mood}. Recent user messages: ${recentUserMessages}`.slice(0, 240);
 }
 
-const hasSupabaseEnv =
-  Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-  Boolean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-const supabase: SupabaseClient | null = hasSupabaseEnv
-  ? createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    )
-  : null;
+const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 function readDraft(key: string): PersistedConversation | null {
   if (typeof window === "undefined") return null;
@@ -210,8 +206,8 @@ export default function Page() {
   const [mood, setMood] = useState<Mood>("honest");
   const [loading, setLoading] = useState(false);
 
-  const bottomRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const activeDraftKey = useMemo(() => draftKey(user?.email ?? null), [user?.email]);
 
@@ -344,6 +340,7 @@ export default function Page() {
       await supabase.auth.signOut();
     }
     setUser(null);
+
     const guest = readDraft(GUEST_KEY);
     setMessages(guest?.messages?.length ? guest.messages : [welcomeMessage]);
     setInput(guest?.input ?? "");
@@ -379,7 +376,7 @@ export default function Page() {
       time: formatClock()
     };
 
-    const nextMessages = [...messages, userMessage].slice(-50);
+    const nextMessages = [...messages, userMessage].slice(-MAX_MESSAGES);
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
@@ -418,7 +415,7 @@ export default function Page() {
         time: formatClock()
       };
 
-      setMessages((prev) => [...prev, assistantMessage].slice(-50));
+      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
 
       if (user?.id) {
         await insertMessage(user.id, "me", trimmed);
@@ -438,7 +435,7 @@ export default function Page() {
         time: formatClock()
       };
 
-      setMessages((prev) => [...prev, assistantMessage].slice(-50));
+      setMessages((prev) => [...prev, assistantMessage].slice(-MAX_MESSAGES));
 
       if (user?.id) {
         await insertMessage(user.id, "me", trimmed);
@@ -624,7 +621,7 @@ export default function Page() {
           <div style={threadHeader}>
             <div style={threadLeft}>
               <div style={avatar}>FM</div>
-              <div>
+              <div style={threadText}>
                 <div style={threadName}>Future Me</div>
                 <div style={threadMeta}>private chat · persistent memory</div>
               </div>
@@ -824,6 +821,11 @@ const threadBody: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: 10
+};
+
+const threadText: CSSProperties = {
+  display: "grid",
+  gap: 2
 };
 
 const threadHeader: CSSProperties = {
