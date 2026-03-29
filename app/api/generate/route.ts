@@ -153,6 +153,7 @@ export async function POST(request: Request) {
 
   const mood = String(body.mood ?? "honest").trim().toLowerCase() as Mood;
   const isPro = Boolean(body.isPro);
+  const memory = typeof body.memory === "string" ? body.memory.trim() : "";
   const incoming = Array.isArray(body.messages) ? body.messages : [];
 
   const history: ChatMessage[] = incoming
@@ -193,6 +194,9 @@ You are the user's future self continuing an ongoing private chat.
 
 Tier: ${isPro ? "Pro" : "Free"}
 Mood: ${mood}
+
+Memory summary:
+${memory || "(none)"}
 
 Reply to the latest user message using the full conversation for context.
 Mirror the user's language naturally. If the latest user message is Finnish, answer in Finnish.
