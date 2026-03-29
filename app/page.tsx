@@ -386,12 +386,12 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       fontWeight: 700
     },
     memoryCard: {
-      borderRadius: 24,
-      padding: 16,
+      borderRadius: 20,
+      padding: 12,
       background: "rgba(16,24,38,0.05)",
       border: "1px solid rgba(16,24,38,0.06)",
       display: "grid",
-      gap: 8
+      gap: 6
     },
     memoryTitle: {
       fontSize: 13,
@@ -414,7 +414,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     threadCard: {
       flex: "1 1 auto",
-      minHeight: 0,
+      minHeight: mobile ? 360 : 460,
       display: "flex",
       flexDirection: "column",
       borderRadius: 30,
@@ -489,7 +489,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       minHeight: 0,
       display: "flex",
       flexDirection: "column",
-      padding: 16
+      padding: mobile ? 12 : 16
     },
     stream: {
       flex: "1 1 auto",
@@ -564,7 +564,7 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     composerShell: {
       flex: "0 0 auto",
-      borderRadius: 28,
+      borderRadius: 24,
       background: "rgba(255,255,255,0.72)",
       border: "1px solid rgba(16,24,38,0.07)",
       boxShadow: "0 20px 54px rgba(16,24,38,0.08)",
@@ -573,33 +573,33 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     },
     composerRow: {
       display: "flex",
-      gap: 10,
+      gap: 8,
       alignItems: "flex-end",
-      padding: 14,
+      padding: 12,
       flexDirection: mobile ? "column" : "row"
     },
     composerTextarea: {
       flex: 1,
       width: "100%",
-      minHeight: 58,
-      maxHeight: 180,
+      minHeight: 46,
+      maxHeight: 120,
       resize: "none",
-      borderRadius: 26,
+      borderRadius: 20,
       border: "1px solid rgba(16,24,38,0.08)",
       background: "rgba(255,255,255,0.88)",
       color: "#101826",
-      padding: "15px 14px",
-      lineHeight: 1.55,
-      fontSize: 15,
+      padding: "12px 12px",
+      lineHeight: 1.45,
+      fontSize: 14,
       outline: "none",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
       transition: "border-color 160ms ease, box-shadow 160ms ease"
     },
     sendButton: {
-      minWidth: mobile ? "100%" : 104,
+      minWidth: mobile ? "100%" : 84,
       border: 0,
-      borderRadius: 26,
-      padding: "14px 16px",
+      borderRadius: 20,
+      padding: "11px 14px",
       background: "linear-gradient(180deg, #101826, #1b2636)",
       color: "#f5efe6",
       fontWeight: 700,
