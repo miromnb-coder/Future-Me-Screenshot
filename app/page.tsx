@@ -253,9 +253,7 @@ function buildMemoryPrompt(messages: Message[], mood: Mood, memorySummary = "") 
     .map((m) => m.text)
     .join(" | ");
 
-  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${
-    memorySummary ? ` | Summary: ${memorySummary}` : ""
-  }`.slice(0, 240);
+  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`.slice(0, 240);
 }
 
 function loadDraft(key: string): PersistedState | null {
@@ -354,16 +352,9 @@ function createStyles(
   isPro: boolean,
   hasConversationStarted: boolean,
   loading: boolean,
-  mood: Mood
+  mood: Mood,
+  accent: string
 ): Record<string, CSSProperties> {
-  const accentMap: Record<Mood, string> = {
-    calm: "#5b8def",
-    honest: "#f3a85f",
-    direct: "#3bc6a1",
-    wise: "#8f67f2",
-  };
-  const accent = accentMap[mood];
-
   return {
     page: {
       minHeight: "100dvh",
@@ -1356,6 +1347,14 @@ export default function Page() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  const accentMap: Record<Mood, string> = {
+    calm: "#5b8def",
+    honest: "#f3a85f",
+    direct: "#3bc6a1",
+    wise: "#8f67f2",
+  };
+  const accent = accentMap[mood];
+
   const remainingToday =
     usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
 
@@ -1486,8 +1485,8 @@ export default function Page() {
   }, []);
 
   const styles = useMemo(
-    () => createStyles(mobile, isPro, hasConversationStarted, loading, mood),
-    [mobile, isPro, hasConversationStarted, loading, mood]
+    () => createStyles(mobile, isPro, hasConversationStarted, loading, mood, accent),
+    [mobile, isPro, hasConversationStarted, loading, mood, accent]
   );
 
   function incrementUsage() {
