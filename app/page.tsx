@@ -38,6 +38,8 @@ const STORAGE_KEY = "future-me-v6";
 const FREE_LIMIT = 5;
 const MAX_MESSAGES = 50;
 const MIN_REPLY_DELAY_MS = 850;
+const EMAIL_COOLDOWN_MS = 60_000;
+const EMAIL_COOLDOWN_KEY = "future-me-email-cooldown-until";
 
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
@@ -600,7 +602,8 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
     sheetSub: {
       marginTop: 3,
       fontSize: 12,
-      color: "rgba(16,24,38,0.56)"
+      color: "rgba(16,24,38,0.56)",
+      lineHeight: 1.5
     },
     sheetGroup: {
       display: "grid",
@@ -717,8 +720,46 @@ function createStyles(mobile: boolean, isPro: boolean): Record<string, CSSProper
       fontSize: 12,
       fontWeight: 700,
       width: "fit-content"
+    },
+    sheetInput: {
+      borderRadius: 16,
+      border: "1px solid rgba(16,24,38,0.08)",
+      padding: "12px 14px",
+      background: "rgba(255,255,255,0.92)",
+      fontSize: 15
+    },
+    sheetPrimary: {
+      border: 0,
+      borderRadius: 16,
+      padding: "12px 16px",
+      background: "#101826",
+      color: "#f5efe6",
+      fontWeight: 800
+    },
+    sheetSecondary: {
+      border: "1px solid rgba(16,24,38,0.08)",
+      borderRadius: 16,
+      padding: "12px 16px",
+      background: "rgba(255,255,255,0.88)",
+      color: "#101826",
+      fontWeight: 700
+    },
+    sheetHint: {
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)",
+      lineHeight: 1.5
     }
   };
+}
+
+function getEmailCooldownUntil() {
+  if (typeof window === "undefined") return 0;
+  return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
+}
+
+function setEmailCooldownUntil(ts: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
 }
 
 export default function Page() {
@@ -736,6 +777,8 @@ export default function Page() {
   const [isPro, setIsPro] = useState(false);
   const [usage, setUsage] = useState<Usage>(defaultUsage());
   const [user, setUser] = useState<User | null>(null);
+  const [emailCooldownUntil, setEmailCooldownUntilState] = useState(0);
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const threadRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -744,12 +787,16 @@ export default function Page() {
   const remainingToday =
     usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
 
+  const cooldownLeftMs = Math.max(0, emailCooldownUntil - Date.now());
+  const cooldownLeftSec = Math.ceil(cooldownLeftMs / 1000);
+  const emailDisabled = sendingEmail || cooldownLeftMs > 0;
+
   const activeDraftKey = useMemo(() => {
     return user?.email ? `future-me:${user.email.trim().toLowerCase()}` : STORAGE_KEY;
   }, [user?.email]);
 
   useEffect(() => {
-    const update = () => setMobile(window.innerWidth < 900);
+    const update = () => setMobile(window.innerWidth < 900));
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -757,6 +804,17 @@ export default function Page() {
 
   useEffect(() => {
     textareaRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const initialCooldown = getEmailCooldownUntil();
+    setEmailCooldownUntilState(initialCooldown);
+
+    const timer = window.setInterval(() => {
+      setEmailCooldownUntilState(getEmailCooldownUntil());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -900,6 +958,12 @@ export default function Page() {
     const email = emailInput.trim().toLowerCase();
     if (!email) return;
 
+    if (Date.now() < getEmailCooldownUntil()) {
+      setLoginStatus(`Wait ${Math.ceil((getEmailCooldownUntil() - Date.now()) / 1000)}s and try again.`);
+      return;
+    }
+
+    setSendingEmail(true);
     setLoginStatus("Sending magic link...");
 
     const { error } = await supabase.auth.signInWithOtp({
@@ -911,10 +975,17 @@ export default function Page() {
 
     if (error) {
       setLoginStatus(error.message);
+      setSendingEmail(false);
       return;
     }
 
+    const until = Date.now() + EMAIL_COOLDOWN_MS;
+    setEmailCooldownUntil(until);
+    setEmailCooldownUntilState(until);
+    setEmailCooldownUntil(until);
+
     setLoginStatus("Check your email for the sign-in link.");
+    setSendingEmail(false);
   }
 
   async function insertMessage(userId: string, role: Role, text: string) {
@@ -1169,8 +1240,8 @@ export default function Page() {
             }}
           />
 
-          <button style={styles.sheetPrimary} onClick={() => void signInWithEmail()}>
-            Send magic link
+          <button style={{ ...styles.sheetPrimary, opacity: emailDisabled ? 0.6 : 1 }} onClick={() => void signInWithEmail()} disabled={emailDisabled}>
+            {sendingEmail ? "Sending..." : cooldownLeftMs > 0 ? `Wait ${cooldownLeftSec}s` : "Send magic link"}
           </button>
 
           <button style={styles.sheetSecondary} onClick={() => setShowSaveSheet(false)}>
