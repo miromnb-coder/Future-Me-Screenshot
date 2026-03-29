@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
-import { createClient } from "../lib/supabase/client";
+import { createClient } from "@supabase/supabase-js";
 
 type Role = "me" | "future me";
 type Mood = "calm" | "honest" | "direct" | "wise";
@@ -15,10 +15,21 @@ type Message = {
 };
 
 type PersistedConversation = {
-  email: string;
   messages: Message[];
   input: string;
   mood: Mood;
+};
+
+type AuthUser = {
+  id: string;
+  email?: string | null;
+};
+
+type MessageRow = {
+  id: string;
+  role: Role;
+  text: string;
+  created_at: string;
 };
 
 const moodLabels: Record<Mood, string> = {
@@ -48,10 +59,6 @@ function formatClock() {
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
-}
-
-function storageKey(email: string) {
-  return `future-me:${normalizeEmail(email) || "guest"}`;
 }
 
 function looksFinnish(text: string) {
@@ -132,31 +139,36 @@ function buildMemory(messages: Message[], mood: Mood) {
   return `Mood: ${mood}. Recent user messages: ${recentUserMessages}`.slice(0, 240);
 }
 
-export default function Page() {
-  const supabase = useMemo(() => createClient(), []);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
+export default function Page() {
   const [ready, setReady] = useState(false);
-  const [signedInEmail, setSignedInEmail] = useState("");
+  const [user, setUser] = useState<AuthUser | null>(null);
+
   const [emailInput, setEmailInput] = useState("");
+  const [loginStatus, setLoginStatus] = useState("");
 
   const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
   const [input, setInput] = useState("");
   const [mood, setMood] = useState<Mood>("honest");
   const [loading, setLoading] = useState(false);
-  const [loginStatus, setLoginStatus] = useState("");
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
 
-  const draftKey = useMemo(() => storageKey(signedInEmail), [signedInEmail]);
+  const draftKey = useMemo(() => {
+    const email = normalizeEmail(user?.email ?? emailInput);
+    return `future-me:${email || "guest"}`;
+  }, [user?.email, emailInput]);
 
   useEffect(() => {
     const savedEmail = window.localStorage.getItem("future-me-email") || "";
     if (savedEmail) {
-      setSignedInEmail(savedEmail);
       setEmailInput(savedEmail);
 
-      const savedRaw = window.localStorage.getItem(storageKey(savedEmail));
+      const savedRaw = window.localStorage.getItem(`future-me:${normalizeEmail(savedEmail)}`);
       if (savedRaw) {
         try {
           const parsed = JSON.parse(savedRaw) as PersistedConversation;
@@ -176,42 +188,37 @@ export default function Page() {
     }
 
     supabase.auth.getSession().then(({ data }) => {
-      const email = data.session?.user.email ?? savedEmail;
-      if (email) {
-        setSignedInEmail(email);
-        setEmailInput(email);
+      const sessionUser = data.session?.user;
+      if (sessionUser) {
+        setUser({ id: sessionUser.id, email: sessionUser.email });
       }
       setReady(true);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const email = session?.user.email ?? "";
-      if (email) {
-        setSignedInEmail(email);
-        setEmailInput(email);
+    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      const sessionUser = session?.user;
+      if (sessionUser) {
+        setUser({ id: sessionUser.id, email: sessionUser.email });
       } else {
-        setSignedInEmail("");
+        setUser(null);
       }
     });
 
-    return () => {
-      sub.subscription.unsubscribe();
-    };
-  }, [supabase]);
+    return () => subscription.subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
-    if (!signedInEmail) return;
+    if (!user) return;
 
     const payload: PersistedConversation = {
-      email: signedInEmail,
       messages,
       input,
       mood
     };
 
     window.localStorage.setItem(draftKey, JSON.stringify(payload));
-    window.localStorage.setItem("future-me-email", signedInEmail);
-  }, [messages, input, mood, signedInEmail, draftKey]);
+    window.localStorage.setItem("future-me-email", user.email ?? "");
+  }, [messages, input, mood, user, draftKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -234,9 +241,9 @@ export default function Page() {
       return;
     }
 
-    const loaded = (data ?? []).map((m) => ({
+    const loaded = (data ?? []).map((m: MessageRow) => ({
       id: m.id,
-      role: m.role as Role,
+      role: m.role,
       text: m.text,
       time: new Date(m.created_at).toLocaleTimeString([], {
         hour: "2-digit",
@@ -248,11 +255,9 @@ export default function Page() {
   }
 
   useEffect(() => {
-    const user = supabase.auth.getUser().then(({ data }) => data.user);
-    void user.then((u) => {
-      if (u) void loadMessagesForUser(u.id);
-    });
-  }, [supabase, signedInEmail]);
+    if (!user) return;
+    void loadMessagesForUser(user.id);
+  }, [user]);
 
   async function signIn() {
     const email = normalizeEmail(emailInput);
@@ -277,7 +282,7 @@ export default function Page() {
 
   async function signOut() {
     await supabase.auth.signOut();
-    setSignedInEmail("");
+    setUser(null);
     setMessages([welcomeMessage]);
     setInput("");
     setMood("honest");
@@ -298,7 +303,7 @@ export default function Page() {
   }
 
   async function sendMessage() {
-    if (!signedInEmail || loading) return;
+    if (!user || loading) return;
 
     const trimmed = input.trim();
     if (!trimmed) return;
@@ -317,13 +322,6 @@ export default function Page() {
 
     const startedAt = Date.now();
     const memory = buildMemory(nextMessages, mood);
-
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-
-    if (userId) {
-      await insertMessage(userId, "me", trimmed);
-    }
 
     try {
       const response = await fetch("/api/generate", {
@@ -358,9 +356,8 @@ export default function Page() {
 
       setMessages((prev) => [...prev, assistantMessage].slice(-50));
 
-      if (userId) {
-        await insertMessage(userId, "future me", replyText);
-      }
+      await insertMessage(user.id, "me", trimmed);
+      await insertMessage(user.id, "future me", replyText);
     } catch {
       const remaining = Math.max(0, 850 - (Date.now() - startedAt));
       if (remaining > 0) {
@@ -377,9 +374,8 @@ export default function Page() {
 
       setMessages((prev) => [...prev, assistantMessage].slice(-50));
 
-      if (userId) {
-        await insertMessage(userId, "future me", replyText);
-      }
+      await insertMessage(user.id, "me", trimmed);
+      await insertMessage(user.id, "future me", replyText);
     } finally {
       setLoading(false);
       setTimeout(() => {
@@ -428,9 +424,50 @@ export default function Page() {
     );
   }
 
-  if (!signedInEmail) {
+  if (!user) {
     return (
       <main style={loginPage}>
+        <style jsx global>{`
+          :root {
+            color-scheme: light;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          html,
+          body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
+            color: #101826;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+          }
+
+          body {
+            overflow: hidden;
+          }
+
+          button,
+          textarea,
+          input {
+            font: inherit;
+          }
+
+          button {
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          input {
+            outline: none;
+          }
+        `}</style>
+
         <section style={loginCard}>
           <div style={loginTitle}>Future Me</div>
           <div style={loginSub}>Enter your email to get a magic link.</div>
@@ -463,11 +500,80 @@ export default function Page() {
 
   return (
     <main style={page}>
+      <style jsx global>{`
+        :root {
+          color-scheme: light;
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        html,
+        body {
+          margin: 0;
+          width: 100%;
+          height: 100%;
+          background:
+            radial-gradient(circle at top left, rgba(255, 255, 255, 0.70), transparent 24%),
+            radial-gradient(circle at top right, rgba(255, 255, 255, 0.28), transparent 20%),
+            linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%);
+          color: #101826;
+          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+          overflow: hidden;
+        }
+
+        button,
+        textarea {
+          font: inherit;
+        }
+
+        button {
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        textarea {
+          outline: none;
+        }
+
+        ::selection {
+          background: rgba(16, 24, 38, 0.14);
+          color: #101826;
+        }
+
+        @keyframes floatIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.99);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes pulse {
+          0%,
+          100% {
+            opacity: 0.45;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+      `}</style>
+
       <div style={shell}>
         <header style={header}>
           <div style={brandBlock}>
             <div style={brand}>Future Me</div>
-            <div style={subtitle}>signed in as {signedInEmail}</div>
+            <div style={subtitle}>signed in as {user.email}</div>
           </div>
 
           <div style={headerActions}>
@@ -516,10 +622,23 @@ export default function Page() {
                 style={{
                   display: "flex",
                   justifyContent: message.role === "me" ? "flex-end" : "flex-start",
-                  width: "100%"
+                  width: "100%",
+                  animation: "floatIn 220ms ease both"
                 }}
               >
-                <div style={message.role === "me" ? myBubble : aiBubble}>
+                <div
+                  style={
+                    message.role === "me"
+                      ? {
+                          ...myBubble,
+                          maxWidth: "82%"
+                        }
+                      : {
+                          ...aiBubble,
+                          maxWidth: "82%"
+                        }
+                  }
+                >
                   <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{message.text}</div>
                   <div style={timeStyle}>{message.time}</div>
                 </div>
@@ -765,7 +884,6 @@ const liveDot: CSSProperties = {
 };
 
 const myBubble: CSSProperties = {
-  maxWidth: "82%",
   padding: "14px 16px",
   borderRadius: 26,
   background: "linear-gradient(180deg, #101826, #141f2f)",
@@ -774,7 +892,6 @@ const myBubble: CSSProperties = {
 };
 
 const aiBubble: CSSProperties = {
-  maxWidth: "82%",
   padding: "14px 16px",
   borderRadius: 26,
   background: "rgba(16,24,38,0.06)",
