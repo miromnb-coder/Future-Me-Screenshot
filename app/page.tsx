@@ -139,9 +139,14 @@ function buildMemory(messages: Message[], mood: Mood) {
   return `Mood: ${mood}. Recent user messages: ${recentUserMessages}`.slice(0, 240);
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+);
+
+function providerRedirect() {
+  return `${window.location.origin}/`;
+}
 
 export default function Page() {
   const [ready, setReady] = useState(false);
@@ -259,7 +264,7 @@ export default function Page() {
     void loadMessagesForUser(user.id);
   }, [user]);
 
-  async function signIn() {
+  async function signInWithEmail() {
     const email = normalizeEmail(emailInput);
     if (!email) return;
 
@@ -268,7 +273,7 @@ export default function Page() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`
+        emailRedirectTo: providerRedirect()
       }
     });
 
@@ -278,6 +283,21 @@ export default function Page() {
     }
 
     setLoginStatus("Check your email for the sign-in link.");
+  }
+
+  async function signInWithGoogle() {
+    setLoginStatus("Opening Google login...");
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: providerRedirect()
+      }
+    });
+
+    if (error) {
+      setLoginStatus(error.message);
+    }
   }
 
   async function signOut() {
@@ -385,27 +405,6 @@ export default function Page() {
     }
   }
 
-  async function shareConversation() {
-    const text = messages
-      .map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`)
-      .join("\n\n");
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: "Future Me",
-          text
-        });
-        return;
-      }
-
-      await navigator.clipboard.writeText(text);
-      alert("Conversation copied.");
-    } catch {
-      alert("Could not share.");
-    }
-  }
-
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -470,7 +469,7 @@ export default function Page() {
 
         <section style={loginCard}>
           <div style={loginTitle}>Future Me</div>
-          <div style={loginSub}>Enter your email to get a magic link.</div>
+          <div style={loginSub}>Choose how you want to enter.</div>
 
           <input
             style={loginInput}
@@ -483,13 +482,17 @@ export default function Page() {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                void signIn();
+                void signInWithEmail();
               }
             }}
           />
 
-          <button style={loginButton} onClick={() => void signIn()}>
-            Send magic link
+          <button style={loginButton} onClick={() => void signInWithEmail()}>
+            Continue with email
+          </button>
+
+          <button style={googleButton} onClick={() => void signInWithGoogle()}>
+            Continue with Google
           </button>
 
           {loginStatus ? <div style={loginHint}>{loginStatus}</div> : null}
@@ -577,9 +580,6 @@ export default function Page() {
           </div>
 
           <div style={headerActions}>
-            <button style={secondaryButton} onClick={() => void shareConversation()}>
-              Share
-            </button>
             <button style={secondaryButton} onClick={() => void signOut()}>
               Log out
             </button>
@@ -716,6 +716,15 @@ const loginButton: CSSProperties = {
   padding: "14px 16px",
   background: "#101826",
   color: "#f5efe6",
+  fontWeight: 800
+};
+
+const googleButton: CSSProperties = {
+  border: "1px solid rgba(16,24,38,0.10)",
+  borderRadius: 18,
+  padding: "14px 16px",
+  background: "rgba(255,255,255,0.92)",
+  color: "#101826",
   fontWeight: 800
 };
 
