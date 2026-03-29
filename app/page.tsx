@@ -179,20 +179,44 @@ function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean, lastA
 
   const proSets: Record<Mood, { en: string[]; fi: string[] }> = {
     calm: {
-      en: ["You do not need more force. You need a cleaner decision.", "The fact that this still feels heavy is the clue."],
-      fi: ["Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.", "Se että tämä tuntuu yhä raskaalta on jo vihje."],
+      en: [
+        "You do not need more force. You need a cleaner decision.",
+        "The fact that this still feels heavy is the clue.",
+      ],
+      fi: [
+        "Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.",
+        "Se että tämä tuntuu yhä raskaalta on jo vihje.",
+      ],
     },
     honest: {
-      en: ["You already know the answer, you are just negotiating with it.", "What you call uncertainty is often just attachment to the easier path."],
-      fi: ["Tiedät jo vastauksen, neuvottelet vain sen kanssa.", "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun."],
+      en: [
+        "You already know the answer, you are just negotiating with it.",
+        "What you call uncertainty is often just attachment to the easier path.",
+      ],
+      fi: [
+        "Tiedät jo vastauksen, neuvottelet vain sen kanssa.",
+        "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun.",
+      ],
     },
     direct: {
-      en: ["Choose the thing you will respect tomorrow.", "Do not optimize for comfort. Optimize for the version of you that has to live with it."],
-      fi: ["Valitse se, mitä kunnioitat huomenna.", "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa."],
+      en: [
+        "Choose the thing you will respect tomorrow.",
+        "Do not optimize for comfort. Optimize for the version of you that has to live with it.",
+      ],
+      fi: [
+        "Valitse se, mitä kunnioitat huomenna.",
+        "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa.",
+      ],
     },
     wise: {
-      en: ["The tradeoff is the point. Once you name it, the decision gets smaller.", "You are not choosing between good and bad. You are choosing which cost is worth paying."],
-      fi: ["Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.", "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa."],
+      en: [
+        "The tradeoff is the point. Once you name it, the decision gets smaller.",
+        "You are not choosing between good and bad. You are choosing which cost is worth paying.",
+      ],
+      fi: [
+        "Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.",
+        "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa.",
+      ],
     },
   };
 
@@ -265,8 +289,17 @@ async function loadCloudState(userId: string) {
   if (!supabase) return { profile: null as ProfileRow | null, messages: [] as Message[] };
 
   const [profileRes, messagesRes] = await Promise.all([
-    supabase.from("profiles").select("user_id,email,memory_summary,last_seen_at").eq("user_id", userId).maybeSingle(),
-    supabase.from("messages").select("id,role,text,created_at").eq("user_id", userId).order("created_at", { ascending: true }).limit(80),
+    supabase
+      .from("profiles")
+      .select("user_id,email,memory_summary,last_seen_at")
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("messages")
+      .select("id,role,text,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(80),
   ]);
 
   return {
@@ -305,8 +338,22 @@ function setEmailCooldownUntilValue(ts: number) {
   window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
 }
 
-function createStyles(mobile: boolean, isPro: boolean, started: boolean, loading: boolean): Record<string, CSSProperties> {
-  const heroCollapsed = started;
+function createStyles(
+  mobile: boolean,
+  isPro: boolean,
+  hasConversationStarted: boolean,
+  loading: boolean,
+  mood: Mood
+): Record<string, CSSProperties> {
+  const moodAccent: Record<Mood, string> = {
+    calm: "#8fb7ff",
+    honest: "#f3b37a",
+    direct: "#9ed2bf",
+    wise: "#c7a2ff",
+  };
+
+  const accent = moodAccent[mood];
+
   return {
     page: {
       minHeight: "100dvh",
@@ -318,7 +365,8 @@ function createStyles(mobile: boolean, isPro: boolean, started: boolean, loading
       background:
         "radial-gradient(circle at 10% 10%, rgba(134, 174, 255, 0.30), transparent 24%), radial-gradient(circle at 90% 15%, rgba(255, 183, 191, 0.26), transparent 22%), radial-gradient(circle at 50% 90%, rgba(117, 231, 193, 0.18), transparent 26%), linear-gradient(180deg, #f4efe7 0%, #ebe4d8 100%)",
       color: "#101826",
-      fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontFamily:
+        'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       position: "relative",
     },
     shell: {
@@ -405,7 +453,7 @@ function createStyles(mobile: boolean, isPro: boolean, started: boolean, loading
     hero: {
       borderRadius: 30,
       padding: mobile ? 18 : 22,
-      background: heroCollapsed
+      background: hasConversationStarted
         ? "linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.62))"
         : "linear-gradient(180deg, rgba(255,255,255,0.86), rgba(255,255,255,0.60))",
       border: "1px solid rgba(16,24,38,0.08)",
@@ -421,7 +469,7 @@ function createStyles(mobile: boolean, isPro: boolean, started: boolean, loading
       width: 260,
       height: 260,
       borderRadius: 999,
-      background: "radial-gradient(circle, rgba(134,174,255,0.22), rgba(134,174,255,0))",
+      background: `radial-gradient(circle, ${accent}40, ${accent}00)`,
       filter: "blur(8px)",
       pointerEvents: "none",
     },
@@ -603,12 +651,10 @@ function createStyles(mobile: boolean, isPro: boolean, started: boolean, loading
       width: 12,
       height: 12,
       borderRadius: 999,
-      background: loading ? "#64748b" : hasConversationStarted ? "#4caf7a" : "#8d6b3d",
+      background: loading ? "#64748b" : accent,
       boxShadow: loading
         ? "0 0 0 6px rgba(100,116,139,0.14)"
-        : hasConversationStarted
-          ? "0 0 0 6px rgba(76,175,122,0.14)"
-          : "0 0 0 6px rgba(141,107,61,0.14)",
+        : `0 0 0 6px ${accent}22`,
       flex: "0 0 auto",
     },
     aiTitle: {
@@ -817,7 +863,9 @@ function createStyles(mobile: boolean, isPro: boolean, started: boolean, loading
       height: 8,
       borderRadius: 999,
       background: isPro ? "#4caf7a" : "#8d6b3d",
-      boxShadow: isPro ? "0 0 0 5px rgba(76,175,122,0.16)" : "0 0 0 5px rgba(141,107,61,0.14)",
+      boxShadow: isPro
+        ? "0 0 0 5px rgba(76,175,122,0.16)"
+        : "0 0 0 5px rgba(141,107,61,0.14)",
     },
     threadBody: {
       flex: "1 1 auto",
@@ -1162,19 +1210,20 @@ function createStyles(mobile: boolean, isPro: boolean, started: boolean, loading
       fontWeight: 800,
       boxShadow: "0 12px 24px rgba(16,24,38,0.05)",
     },
-    sheetHint: { fontSize: 12, color: "rgba(16,24,38,0.56)", lineHeight: 1.5 },
-    mobileSpacer: {
-      height: 0,
+    sheetHint: {
+      fontSize: 12,
+      color: "rgba(16,24,38,0.56)",
+      lineHeight: 1.5,
     },
   };
 }
 
-function getEmailCooldownUntil() {
+function getEmailCooldownUntilValue() {
   if (typeof window === "undefined") return 0;
   return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
 }
 
-function setEmailCooldownUntilValue(ts: number) {
+function setEmailCooldownUntilValueSafe(ts: number) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
 }
@@ -1204,6 +1253,7 @@ export default function Page() {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const remainingToday = usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
+
   const draftKey = useMemo(() => profileToDraftKey(user?.email), [user?.email]);
   const memoryKey = useMemo(() => profileToMemoryKey(user?.email), [user?.email]);
   const hasConversationStarted = messages.some((m) => m.id !== "welcome");
@@ -1231,10 +1281,10 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    const initialCooldown = getEmailCooldownUntil();
+    const initialCooldown = getEmailCooldownUntilValue();
     setEmailCooldownUntilState(initialCooldown);
     const timer = window.setInterval(() => {
-      setEmailCooldownUntilState(getEmailCooldownUntil());
+      setEmailCooldownUntilState(getEmailCooldownUntilValue());
     }, 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -1324,12 +1374,10 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const styles = useMemo(() => createStyles(mobile, isPro, hasConversationStarted, loading), [
-    mobile,
-    isPro,
-    hasConversationStarted,
-    loading,
-  ]);
+  const styles = useMemo(
+    () => createStyles(mobile, isPro, hasConversationStarted, loading, mood),
+    [mobile, isPro, hasConversationStarted, loading, mood]
+  );
 
   function incrementUsage() {
     const today = todayKey();
@@ -1365,7 +1413,10 @@ export default function Page() {
     const { profile, messages: cloudMessages } = await loadCloudState(nextUser.id);
     if (cloudMessages.length > 0) setMessages(cloudMessages.slice(-MAX_MESSAGES));
 
-    const cloudMemory = profile?.memory_summary?.trim() || buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
+    const cloudMemory =
+      profile?.memory_summary?.trim() ||
+      buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
+
     if (cloudMemory) {
       setMemorySummary(cloudMemory);
       window.localStorage.setItem(profileToMemoryKey(nextUser.email), cloudMemory);
@@ -1381,7 +1432,7 @@ export default function Page() {
     const email = emailInput.trim().toLowerCase();
     if (!email) return;
 
-    const cooldownUntil = getEmailCooldownUntil();
+    const cooldownUntil = getEmailCooldownUntilValue();
     if (Date.now() < cooldownUntil) {
       setLoginStatus(`Wait ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s and try again.`);
       return;
@@ -1392,7 +1443,9 @@ export default function Page() {
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/` },
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
+      },
     });
 
     if (error) {
@@ -1402,7 +1455,7 @@ export default function Page() {
     }
 
     const until = Date.now() + EMAIL_COOLDOWN_MS;
-    setEmailCooldownUntilValue(until);
+    setEmailCooldownUntilValueSafe(until);
     setEmailCooldownUntilState(until);
     setLoginStatus("Check your email for the sign-in link.");
     setSendingEmail(false);
@@ -1553,7 +1606,9 @@ export default function Page() {
   }
 
   async function shareConversation() {
-    const transcript = messages.map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`).join("\n\n");
+    const transcript = messages
+      .map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`)
+      .join("\n\n");
 
     try {
       if (navigator.share) {
@@ -1584,12 +1639,22 @@ export default function Page() {
     }
   };
 
+  useEffect(() => {
+    if (!textareaRef.current) return;
+    textareaRef.current.style.height = "auto";
+    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 140)}px`;
+  }, [input]);
+
   return (
     <main style={styles.page}>
       <style jsx global>{`
-        :root { color-scheme: light; }
+        :root {
+          color-scheme: light;
+        }
 
-        * { box-sizing: border-box; }
+        * {
+          box-sizing: border-box;
+        }
 
         html,
         body {
@@ -1611,14 +1676,18 @@ export default function Page() {
         }
 
         button,
-        textarea { font: inherit; }
+        textarea {
+          font: inherit;
+        }
 
         button {
           cursor: pointer;
           -webkit-tap-highlight-color: transparent;
         }
 
-        textarea { outline: none; }
+        textarea {
+          outline: none;
+        }
 
         ::selection {
           background: rgba(16, 24, 38, 0.14);
@@ -1626,13 +1695,24 @@ export default function Page() {
         }
 
         @keyframes floatIn {
-          from { opacity: 0; transform: translateY(10px) scale(0.99); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.99);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
         }
 
         @keyframes pulse {
-          0%, 100% { opacity: 0.45; }
-          50% { opacity: 1; }
+          0%,
+          100% {
+            opacity: 0.45;
+          }
+          50% {
+            opacity: 1;
+          }
         }
       `}</style>
 
@@ -1694,11 +1774,23 @@ export default function Page() {
           </div>
 
           <div style={styles.sheetGroup}>
-            <button style={styles.sheetButton} onClick={startOver}>Start over</button>
-            <button style={styles.sheetButton} onClick={shareConversation}>Share conversation</button>
-            <button style={styles.sheetButton} onClick={openUpgrade}>Upgrade to Pro</button>
-            {user ? <button style={styles.sheetButton} onClick={() => void signOut()}>Sign out</button> : null}
-            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>Close</button>
+            <button style={styles.sheetButton} onClick={startOver}>
+              Start over
+            </button>
+            <button style={styles.sheetButton} onClick={shareConversation}>
+              Share conversation
+            </button>
+            <button style={styles.sheetButton} onClick={openUpgrade}>
+              Upgrade to Pro
+            </button>
+            {user ? (
+              <button style={styles.sheetButton} onClick={() => void signOut()}>
+                Sign out
+              </button>
+            ) : null}
+            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>
+              Close
+            </button>
           </div>
         </aside>
       )}
@@ -1717,17 +1809,35 @@ export default function Page() {
           <div style={styles.featureCard}>
             <div style={styles.paywallSub}>What changes in Pro</div>
             <div style={styles.featureList}>
-              <div style={styles.featureItem}><span style={styles.featureDot} /> Longer memory and fewer generic replies.</div>
-              <div style={styles.featureItem}><span style={styles.featureDot} /> Mood modes that actually change the tone.</div>
-              <div style={styles.featureItem}><span style={styles.featureDot} /> Unlimited messages and longer conversations.</div>
-              <div style={styles.featureItem}><span style={styles.featureDot} /> Better sharing and a more personal feel.</div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Longer memory and fewer generic replies.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Mood modes that actually change the tone.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Unlimited messages and longer conversations.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Better sharing and a more personal feel.
+              </div>
             </div>
           </div>
 
           <div style={styles.paywallButtons}>
-            <button style={styles.proButton} onClick={() => setIsPro(true)}>Unlock demo Pro</button>
-            <button style={styles.ghostButton} onClick={shareConversation}>Share conversation</button>
-            <button style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>Not now</button>
+            <button style={styles.proButton} onClick={() => setIsPro(true)}>
+              Unlock demo Pro
+            </button>
+            <button style={styles.ghostButton} onClick={shareConversation}>
+              Share conversation
+            </button>
+            <button style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>
+              Not now
+            </button>
           </div>
 
           <div style={styles.hintLine}>
@@ -1738,14 +1848,18 @@ export default function Page() {
 
       <div style={styles.shell}>
         <header style={styles.topBar}>
-          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>≡</button>
+          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
+            ≡
+          </button>
 
           <div style={styles.topTitle}>
             <div style={styles.brand}>Future Me</div>
             <div style={styles.brandSub}>{user ? "synced cloud memory" : "guest mode · local memory"}</div>
           </div>
 
-          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>⋯</button>
+          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
+            ⋯
+          </button>
         </header>
 
         {!hasConversationStarted ? (
@@ -1790,26 +1904,43 @@ export default function Page() {
 
             <div style={styles.compactActionRow}>
               {memorySummary ? (
-                <button style={styles.compactButton} onClick={continueFromYesterday}>Continue from yesterday</button>
+                <button style={styles.compactButton} onClick={continueFromYesterday}>
+                  Continue from yesterday
+                </button>
               ) : (
-                <button style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>Keep writing</button>
+                <button style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>
+                  Keep writing
+                </button>
               )}
-              <button style={styles.compactGhost} onClick={() => setMenuOpen(true)}>Open actions</button>
+              <button style={styles.compactGhost} onClick={() => setMenuOpen(true)}>
+                Open actions
+              </button>
             </div>
           </section>
         )}
 
         <div style={styles.statusRow}>
           <span style={styles.pill}>
-            <span style={{ width: 7, height: 7, borderRadius: 999, background: isPro ? "#4caf7a" : "#8d6b3d" }} />
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 999,
+                background: isPro ? "#4caf7a" : "#8d6b3d",
+              }}
+            />
             {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
           </span>
           <span style={styles.pill}>{user ? "synced to cloud" : "guest mode"}</span>
           <span style={styles.pill}>{visibleMessageCount} messages</span>
           {!user ? (
-            <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>Save with email</button>
+            <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
+              Save with email
+            </button>
           ) : (
-            <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>Account</button>
+            <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>
+              Account
+            </button>
           )}
         </div>
 
@@ -1881,6 +2012,7 @@ export default function Page() {
               {messages.map((message) => {
                 const isUser = message.role === "me";
                 const roleStyle = isUser ? { ...styles.messageRole, ...styles.messageRoleMe } : styles.messageRole;
+
                 return (
                   <div
                     key={message.id}
@@ -1893,7 +2025,11 @@ export default function Page() {
                     <article style={{ ...styles.messageBubble, ...(isUser ? styles.meBubble : styles.futureMeBubble) }}>
                       <div style={styles.messageTop}>
                         <span style={roleStyle}>{isUser ? "You" : "Future Me"}</span>
-                        <button type="button" style={styles.copyButton} onClick={() => void copyMessage(message.text, message.id)}>
+                        <button
+                          type="button"
+                          style={styles.copyButton}
+                          onClick={() => void copyMessage(message.text, message.id)}
+                        >
                           {copiedId === message.id ? "Copied" : "Copy"}
                         </button>
                       </div>
@@ -1946,7 +2082,8 @@ export default function Page() {
           </div>
 
           <div style={styles.helper}>
-            Press Enter to send · Shift+Enter for a new line · {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
+            Press Enter to send · Shift+Enter for a new line ·{" "}
+            {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
           </div>
         </section>
       </div>
