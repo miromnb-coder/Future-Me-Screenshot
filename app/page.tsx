@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import type { CSSProperties, KeyboardEvent, ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, CSSProperties, KeyboardEvent } from "react";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 type Role = "me" | "future me";
@@ -242,7 +242,6 @@ function buildMemorySummary(messages: Message[]) {
     .map((m) => m.text.trim())
     .filter(Boolean)
     .join(" • ");
-
   return userTexts.slice(0, 240);
 }
 
@@ -316,8 +315,7 @@ async function loadCloudState(userId: string) {
       profile: (profileRes.data ?? null) as ProfileRow | null,
       messages: normalizeMessageRows((messagesRes.data ?? []) as MessageRow[]),
     };
-  } catch (error) {
-    console.error("Failed to load cloud state", error);
+  } catch {
     return { profile: null, messages: [] };
   }
 }
@@ -364,7 +362,6 @@ function createStyles(
   mood: Mood,
   accent: string
 ): Record<string, CSSProperties> {
-  // Styles have been kept exactly as they were to preserve your UI completely
   return {
     page: {
       minHeight: "100dvh",
@@ -606,6 +603,7 @@ function createStyles(
       color: "#f5efe6",
       fontWeight: 900,
       boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+      cursor: "pointer",
     },
     compactGhost: {
       border: "1px solid rgba(16,24,38,0.08)",
@@ -615,6 +613,7 @@ function createStyles(
       color: "#101826",
       fontWeight: 800,
       boxShadow: "0 10px 24px rgba(16,24,38,0.05)",
+      cursor: "pointer",
     },
     statusRow: {
       display: "flex",
@@ -835,18 +834,6 @@ function createStyles(
       fontSize: 12,
       color: "rgba(16,24,38,0.58)",
       lineHeight: 1.4,
-    },
-    aiPill: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      padding: "8px 12px",
-      borderRadius: 999,
-      background: "rgba(16,24,38,0.05)",
-      border: "1px solid rgba(16,24,38,0.06)",
-      fontSize: 12,
-      fontWeight: 800,
-      color: "rgba(16,24,38,0.72)",
     },
     aiChips: {
       display: "flex",
@@ -1383,13 +1370,6 @@ export default function Page() {
   const hasConversationStarted = messages.some((m) => m.id !== "welcome");
   const visibleMessageCount = Math.max(0, messages.filter((m) => m.id !== "welcome").length);
   const liveLabel = loading ? "responding..." : hasConversationStarted ? "online" : "ready";
-  const liveSub = loading
-    ? "reframing your thought"
-    : hasConversationStarted
-      ? memorySummary
-        ? "memory connected"
-        : "holding context"
-      : "waiting for the first thought";
   const composerPlaceholder = moodPlaceholders[mood];
   const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud sync on" : "private draft";
 
@@ -1413,7 +1393,6 @@ export default function Page() {
     return () => window.clearInterval(timer);
   }, []);
 
-  // Hydrate local state
   useEffect(() => {
     try {
       const draft = loadDraft(STORAGE_KEY);
@@ -1449,11 +1428,10 @@ export default function Page() {
     }
   }, [memoryKey]);
 
-  // Debounced Save Draft - Performance improvement
   useEffect(() => {
     if (!hydrated) return;
-    
-    const timeoutId = setTimeout(() => {
+
+    const timeoutId = window.setTimeout(() => {
       saveDraft(draftKey, {
         messages: messages.slice(-MAX_MESSAGES),
         input,
@@ -1462,9 +1440,9 @@ export default function Page() {
         usage,
       });
       window.localStorage.setItem(memoryKey, memorySummary);
-    }, 500);
+    }, 250);
 
-    return () => clearTimeout(timeoutId);
+    return () => window.clearTimeout(timeoutId);
   }, [draftKey, hydrated, input, isPro, messages, mood, memoryKey, memorySummary, usage]);
 
   useEffect(() => {
@@ -1516,15 +1494,6 @@ export default function Page() {
     [mobile, isPro, hasConversationStarted, loading, mood, accent]
   );
 
-  const incrementUsage = useCallback(() => {
-    setUsage((prevUsage) => {
-      const today = todayKey();
-      return prevUsage.date === today
-        ? { date: today, count: prevUsage.count + 1 }
-        : { date: today, count: 1 };
-    });
-  }, []);
-
   async function syncSession(nextUser: User | null) {
     setUser(nextUser);
 
@@ -1564,6 +1533,15 @@ export default function Page() {
       setMemorySummary(cloudMemory);
       window.localStorage.setItem(profileToMemoryKey(nextUser.email), cloudMemory);
     }
+  }
+
+  function incrementUsage() {
+    setUsage((prevUsage) => {
+      const today = todayKey();
+      return prevUsage.date === today
+        ? { date: today, count: prevUsage.count + 1 }
+        : { date: today, count: 1 };
+    });
   }
 
   async function signInWithEmail() {
@@ -1643,13 +1621,8 @@ export default function Page() {
 
     setMessages(nextMessages);
     setInput("");
-    
-    // Reset textarea height after sending
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-
     setLoading(true);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     if (!isPro) incrementUsage();
 
@@ -1733,7 +1706,7 @@ export default function Page() {
     window.localStorage.removeItem(MEMORY_SUMMARY_KEY);
     setMessages([WELCOME_MESSAGE]);
     setInput("");
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
     setMood("honest");
     setLoading(false);
     setMenuOpen(false);
@@ -1787,7 +1760,7 @@ export default function Page() {
 
   const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    e.target.style.height = 'auto';
+    e.target.style.height = "auto";
     e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
   };
 
@@ -2112,8 +2085,10 @@ export default function Page() {
           </div>
 
           <div style={styles.memoryQuote}>
-            “{memorySummary ||
-              "You’ve been thinking about direction, fear of wasting time, and wanting to build something real. You value freedom, growth and honesty with yourself."}”
+            “
+            {memorySummary ||
+              "You’ve been thinking about direction, fear of wasting time, and wanting to build something real. You value freedom, growth and honesty with yourself."}
+            ”
           </div>
         </section>
 
@@ -2151,9 +2126,7 @@ export default function Page() {
               <div style={styles.avatar}>FM</div>
               <div style={{ minWidth: 0 }}>
                 <div style={styles.aiTitle}>Future Me</div>
-                <div style={styles.aiSub}>
-                  {hasConversationStarted ? "Online & remembering" : "Ready to respond"}
-                </div>
+                <div style={styles.aiSub}>{hasConversationStarted ? "Online & remembering" : "Ready to respond"}</div>
               </div>
             </div>
 
