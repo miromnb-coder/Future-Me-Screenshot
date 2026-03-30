@@ -1156,6 +1156,7 @@ function createStyles(
       overflow: "hidden",
       backdropFilter: "blur(40px) saturate(150%)",
       minHeight: mobile ? 400 : 560,
+      maxHeight: 600, // Lisätty rajoittamaan chatin pituutta
       position: "relative",
       transition:
         "background 420ms ease, box-shadow 420ms ease, border-color 420ms ease, color 420ms ease, transform 420ms ease",
@@ -1243,6 +1244,7 @@ function createStyles(
       padding: mobile ? 14 : 20,
       position: "relative",
       zIndex: 1,
+      overflowY: "auto", // TÄMÄ MAHDOLLISTAA RULLAUKSEN
     },
     stream: {
       display: "flex",
@@ -1923,8 +1925,11 @@ export default function Page() {
     }
   }, [messages, memoryKey, user?.email]);
 
+  // AUTOMAATTINEN RULLAUS POHJAAN
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (bottomRef.current) {
+        bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
   }, [messages, loading]);
 
   useEffect(() => {
