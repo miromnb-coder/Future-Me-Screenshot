@@ -1,18 +1,19 @@
 "use client";
 
+import { AnimatePresence, motion } from "framer-motion";
 import {
-  AnimatePresence,
-  motion,
-  useMotionValue,
-  useSpring,
-  useTransform,
-} from "framer-motion";
-import { useEffect, useMemo, useRef, useState } from "react";
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ChangeEvent, CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 type Role = "me" | "future me";
 type Mood = "calm" | "honest" | "direct" | "wise";
+type ViewTab = "chat" | "insights";
 
 type Message = {
   id: string;
@@ -48,11 +49,19 @@ type ProfileRow = {
   last_seen_at: string | null;
 };
 
+type InsightData = {
+  topThemes: { label: string; count: number }[];
+  weeklyActivity: number[];
+  totalUserMessages: number;
+  avgLength: number;
+  dominantTone: string;
+};
+
 const STORAGE_KEY = "future-me-draft";
 const MEMORY_SUMMARY_KEY = "future-me-memory";
 const EMAIL_COOLDOWN_KEY = "future-me-email-cooldown-until";
 const FREE_LIMIT = 5;
-const MAX_MESSAGES = 50;
+const MAX_MESSAGES = 60;
 const MIN_REPLY_DELAY_MS = 650;
 const EMAIL_COOLDOWN_MS = 60_000;
 
@@ -89,6 +98,14 @@ const moodPlaceholders: Record<Mood, string> = {
   honest: "What are you actually avoiding?",
   direct: "Say the thing.",
   wise: "What really matters here?",
+};
+
+const themeKeywords: Record<string, string[]> = {
+  work: ["work", "job", "career", "project", "build", "school", "study", "exam", "code", "app"],
+  relationships: ["friend", "friends", "family", "mother", "father", "sister", "brother", "love", "relationship"],
+  fear: ["fear", "anxious", "anxiety", "worry", "scared", "afraid", "stress", "nervous"],
+  growth: ["grow", "better", "future", "improve", "learn", "progress", "change", "discipline"],
+  freedom: ["free", "freedom", "choice", "independent", "own", "myself", "control"],
 };
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -245,12 +262,11 @@ function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean, lastA
 function buildMemorySummary(messages: Message[]) {
   const userTexts = messages
     .filter((m) => m.role === "me")
-    .slice(-6)
+    .slice(-8)
     .map((m) => m.text.trim())
     .filter(Boolean)
     .join(" • ");
-
-  return userTexts.slice(0, 240);
+  return userTexts.slice(0, 260);
 }
 
 function buildMemoryPrompt(messages: Message[], mood: Mood, memorySummary = "") {
@@ -260,7 +276,7 @@ function buildMemoryPrompt(messages: Message[], mood: Mood, memorySummary = "") 
     .map((m) => m.text)
     .join(" | ");
 
-  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`.slice(0, 240);
+  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`.slice(0, 280);
 }
 
 function loadDraft(key: string): PersistedState | null {
@@ -316,7 +332,7 @@ async function loadCloudState(userId: string) {
         .select("id,role,text,created_at")
         .eq("user_id", userId)
         .order("created_at", { ascending: true })
-        .limit(80),
+        .limit(120),
     ]);
 
     return {
@@ -362,6 +378,13 @@ function writeEmailCooldownUntil(ts: number) {
   window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
 }
 
+function vibrate(pattern: number | number[] = 10) {
+  if (typeof navigator === "undefined") return;
+  if ("vibrate" in navigator) {
+    navigator.vibrate(pattern);
+  }
+}
+
 function hexToRgba(hex: string, alpha: number) {
   const clean = hex.replace("#", "");
   const full = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
@@ -372,42 +395,153 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function searchThemes(messages: Message[]) {
+  const joined = messages
+    .filter((m) => m.role === "me")
+    .map((m) => m.text.toLowerCase())
+    .join(" ");
+
+  const results = Object.entries(themeKeywords).map(([label, keywords]) => {
+    const count = keywords.reduce((sum, keyword) => {
+      const matches = joined.split(keyword).length - 1;
+      return sum + matches;
+    }, 0);
+    return { label, count };
+  });
+
+  return results
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4);
+}
+
+function buildInsights(messages: Message[]): InsightData {
+  const userMessages = messages.filter((m) => m.role === "me");
+  const countsByDay: Record<string, number> = {};
+  const now = new Date();
+
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    countsByDay[d.toISOString().slice(0, 10)] = 0;
+  }
+
+  userMessages.forEach((msg) => {
+    const day = todayKey();
+    if (countsByDay[day] !== undefined) countsByDay[day] += 1;
+  });
+
+  const weeklyActivity = Object.keys(countsByDay).map((key) => countsByDay[key]);
+  const avgLength =
+    userMessages.length > 0
+      ? Math.round(userMessages.reduce((sum, m) => sum + m.text.length, 0) / userMessages.length)
+      : 0;
+
+  const text = userMessages.map((m) => m.text.toLowerCase()).join(" ");
+  const toneScore =
+    (text.match(/\b(can't|can't|worry|afraid|fear|stress|stuck|worried)\b/g)?.length ?? 0) -
+    (text.match(/\b(ready|clear|calm|good|better|grow|move|progress)\b/g)?.length ?? 0);
+
+  const dominantTone =
+    toneScore > 3 ? "tense" : toneScore < -2 ? "confident" : "balanced";
+
+  return {
+    topThemes: searchThemes(messages),
+    weeklyActivity,
+    totalUserMessages: userMessages.length,
+    avgLength,
+    dominantTone,
+  };
+}
+
+async function callMemorySearch(query: string, userId: string, email?: string | null) {
+  try {
+    const res = await fetch("/api/memory/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        userId,
+        email,
+        limit: 6,
+      }),
+    });
+
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    const memories = Array.isArray(data?.memories) ? data.memories : [];
+    return memories
+      .map((item: unknown) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const obj = item as Record<string, unknown>;
+          return String(obj.text ?? obj.summary ?? obj.content ?? "");
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+async function ingestMemory(user: User, text: string, kind: "user" | "assistant" | "summary") {
+  try {
+    await fetch("/api/memory/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user.id,
+        email: user.email ?? null,
+        kind,
+        text,
+      }),
+    });
+  } catch {
+    // optional backend
+  }
+}
+
+function createSpeechRecognition() {
+  if (typeof window === "undefined") return null;
+  const w = window as Window & typeof globalThis & {
+    SpeechRecognition?: any;
+    webkitSpeechRecognition?: any;
+  };
+  const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  if (!Ctor) return null;
+  return new Ctor();
+}
+
 function InteractiveGlassCard({
   accent,
   style,
   children,
+  className,
 }: {
   accent: string;
   style?: CSSProperties;
   children: ReactNode;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const mouseX = useMotionValue(50);
-  const mouseY = useMotionValue(30);
-  const rotateX = useSpring(useTransform(mouseY, [0, 100], [8, -8]), {
-    stiffness: 160,
-    damping: 20,
-  });
-  const rotateY = useSpring(useTransform(mouseX, [0, 100], [-10, 10]), {
-    stiffness: 160,
-    damping: 20,
-  });
+  const [hover, setHover] = useState({ x: 50, y: 50, dx: 0, dy: 0, active: false });
 
   return (
     <motion.div
       ref={ref}
+      className={className}
       onMouseMove={(e) => {
         const rect = ref.current?.getBoundingClientRect();
         if (!rect) return;
-        const px = ((e.clientX - rect.left) / rect.width) * 100;
-        const py = ((e.clientY - rect.top) / rect.height) * 100;
-        mouseX.set(px);
-        mouseY.set(py);
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        const dx = (e.clientX - rect.left - rect.width / 2) / rect.width;
+        const dy = (e.clientY - rect.top - rect.height / 2) / rect.height;
+        setHover({ x, y, dx, dy, active: true });
       }}
-      onMouseLeave={() => {
-        mouseX.set(50);
-        mouseY.set(30);
-      }}
+      onMouseLeave={() => setHover({ x: 50, y: 50, dx: 0, dy: 0, active: false })}
       whileHover={{ y: -2, scale: 1.003 }}
       transition={{ type: "spring", stiffness: 180, damping: 22 }}
       style={{
@@ -415,21 +549,19 @@ function InteractiveGlassCard({
         position: "relative",
         overflow: "hidden",
         transformStyle: "preserve-3d",
-        rotateX,
-        rotateY,
-      } as CSSProperties}
+        transform: `perspective(1200px) rotateX(${hover.active ? -hover.dy * 8 : 0}deg) rotateY(${
+          hover.active ? hover.dx * 10 : 0
+        }deg) translateY(0px)`,
+      }}
     >
-      <motion.div
+      <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          background: `radial-gradient(700px circle at ${mouseX.get()}% ${mouseY.get()}%, ${hexToRgba(
-            accent,
-            0.2
-          )}, transparent 40%)`,
-          transform: `translate3d(${(mouseX.get() - 50) * 0.18}px, ${(mouseY.get() - 30) * 0.18}px, 0)`,
+          background: `radial-gradient(700px circle at ${hover.x}% ${hover.y}%, ${hexToRgba(accent, 0.18)}, transparent 42%)`,
+          transform: `translate3d(${hover.dx * 14}px, ${hover.dy * 14}px, 0)`,
           transition: "transform 120ms linear, background 120ms linear",
         }}
       />
@@ -457,10 +589,12 @@ function createStyles(
   hasConversationStarted: boolean,
   loading: boolean,
   mood: Mood,
-  accent: string
+  accent: string,
+  activeTab: ViewTab
 ): Record<string, CSSProperties> {
   const panelBorder = "1px solid rgba(255,255,255,0.10)";
-  const glassBg = "linear-gradient(145deg, rgba(24, 26, 38, 0.72), rgba(255,255,255,0.05))";
+  const glassBg =
+    "linear-gradient(145deg, rgba(24, 26, 38, 0.72), rgba(255,255,255,0.05))";
   const textMain = "#ffffff";
   const textMuted = "rgba(255,255,255,0.62)";
 
@@ -482,7 +616,7 @@ function createStyles(
     shell: {
       minHeight: "100dvh",
       height: "auto",
-      maxWidth: 980,
+      maxWidth: 1040,
       margin: "0 auto",
       display: "flex",
       flexDirection: "column",
@@ -555,11 +689,39 @@ function createStyles(
     brandSub: {
       fontSize: 12,
       color: "rgba(59, 198, 161, 0.95)",
-      maxWidth: 220,
+      maxWidth: 260,
       whiteSpace: "nowrap",
       overflow: "hidden",
       textOverflow: "ellipsis",
       fontWeight: 700,
+    },
+    tabSwitcher: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      padding: 4,
+      borderRadius: 999,
+      background: "rgba(255,255,255,0.04)",
+      border: panelBorder,
+    },
+    tabButton: {
+      border: 0,
+      borderRadius: 999,
+      padding: "10px 14px",
+      background: "transparent",
+      color: textMuted,
+      fontWeight: 800,
+      fontSize: 12,
+    },
+    tabButtonActive: {
+      border: 0,
+      borderRadius: 999,
+      padding: "10px 14px",
+      background: "rgba(255,255,255,0.12)",
+      color: textMain,
+      fontWeight: 900,
+      fontSize: 12,
+      boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.12)} inset`,
     },
     iconButton: {
       width: 44,
@@ -647,7 +809,7 @@ function createStyles(
       fontSize: mobile ? 15 : 16,
       lineHeight: 1.6,
       color: textMuted,
-      maxWidth: 720,
+      maxWidth: 740,
       position: "relative",
       zIndex: 1,
     },
@@ -1239,7 +1401,7 @@ function createStyles(
       flex: 1,
       width: "100%",
       minHeight: 52,
-      maxHeight: 140,
+      maxHeight: 160,
       resize: "none",
       borderRadius: 20,
       border: "1px solid rgba(255,255,255,0.10)",
@@ -1265,6 +1427,19 @@ function createStyles(
       boxShadow: `0 8px 20px ${hexToRgba(accent, 0.24)}, inset 0 1px 0 rgba(255,255,255,0.18)`,
       cursor: "pointer",
       transition: "transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease",
+    },
+    micButton: {
+      width: mobile ? "100%" : 48,
+      minWidth: mobile ? "100%" : 48,
+      border: "1px solid rgba(255,255,255,0.10)",
+      borderRadius: 20,
+      padding: "14px 0",
+      background: loading ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.22)",
+      color: textMain,
+      fontWeight: 900,
+      fontSize: 15,
+      boxShadow: "0 8px 20px rgba(0,0,0,0.18)",
+      cursor: "pointer",
     },
     helper: {
       padding: "0 16px 16px",
@@ -1475,6 +1650,147 @@ function createStyles(
       lineHeight: 1.5,
       textAlign: "center",
     },
+    insightsGrid: {
+      display: "grid",
+      gridTemplateColumns: mobile ? "1fr" : "1.2fr 0.8fr",
+      gap: 14,
+    },
+    insightCard: {
+      borderRadius: 26,
+      padding: 18,
+      background: glassBg,
+      border: panelBorder,
+      boxShadow: "0 24px 64px rgba(0,0,0,0.34)",
+      backdropFilter: "blur(34px) saturate(150%)",
+    },
+    insightTitle: {
+      fontSize: 18,
+      fontWeight: 900,
+      letterSpacing: "-0.04em",
+      marginBottom: 8,
+    },
+    insightSub: {
+      fontSize: 13,
+      color: textMuted,
+      lineHeight: 1.5,
+    },
+    sparkWrap: {
+      display: "grid",
+      gap: 10,
+      marginTop: 14,
+    },
+    sparkBars: {
+      display: "grid",
+      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+      gap: 8,
+      alignItems: "end",
+      minHeight: 140,
+    },
+    sparkBar: {
+      borderRadius: 14,
+      background: "rgba(255,255,255,0.10)",
+      border: "1px solid rgba(255,255,255,0.06)",
+      minHeight: 12,
+      position: "relative",
+      overflow: "hidden",
+    },
+    sparkFill: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      borderRadius: 14,
+      background: `linear-gradient(180deg, ${accent}, ${hexToRgba(accent, 0.5)})`,
+      boxShadow: `0 0 18px ${hexToRgba(accent, 0.22)}`,
+    },
+    sparkLabelRow: {
+      display: "grid",
+      gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+      gap: 8,
+      fontSize: 11,
+      color: textMuted,
+    },
+    miniCards: {
+      display: "grid",
+      gridTemplateColumns: mobile ? "1fr 1fr" : "repeat(2, minmax(0, 1fr))",
+      gap: 10,
+    },
+    miniCard: {
+      borderRadius: 20,
+      padding: 14,
+      background: "rgba(0,0,0,0.24)",
+      border: "1px solid rgba(255,255,255,0.06)",
+    },
+    miniValue: {
+      fontSize: 22,
+      fontWeight: 900,
+      letterSpacing: "-0.04em",
+    },
+    miniLabel: {
+      fontSize: 12,
+      color: textMuted,
+      marginTop: 4,
+    },
+    themeList: {
+      display: "grid",
+      gap: 10,
+      marginTop: 14,
+    },
+    themeItem: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      padding: "10px 12px",
+      borderRadius: 16,
+      background: "rgba(0,0,0,0.22)",
+      border: "1px solid rgba(255,255,255,0.06)",
+    },
+    themeBar: {
+      height: 8,
+      borderRadius: 999,
+      background: "rgba(255,255,255,0.08)",
+      overflow: "hidden",
+      flex: 1,
+      marginLeft: 12,
+      marginRight: 12,
+    },
+    themeBarFill: {
+      height: "100%",
+      borderRadius: 999,
+      background: `linear-gradient(90deg, ${accent}, ${hexToRgba(accent, 0.45)})`,
+    },
+    themeLabel: {
+      fontSize: 13,
+      fontWeight: 800,
+    },
+    themeCount: {
+      fontSize: 12,
+      color: textMuted,
+      minWidth: 24,
+      textAlign: "right",
+    },
+    voiceHint: {
+      fontSize: 12,
+      color: textMuted,
+      lineHeight: 1.5,
+      marginTop: 8,
+    },
+    memoryPills: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      marginTop: 12,
+    },
+    memoryPill: {
+      borderRadius: 999,
+      padding: "8px 12px",
+      background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.06)",
+      color: textMain,
+      fontSize: 12,
+      fontWeight: 700,
+    },
   };
 }
 
@@ -1498,9 +1814,13 @@ export default function Page() {
   const [memorySummary, setMemorySummary] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [memoryPulse, setMemoryPulse] = useState(false);
+  const [activeTab, setActiveTab] = useState<ViewTab>("chat");
+  const [retrievedMemories, setRetrievedMemories] = useState<string[]>([]);
+  const [voiceListening, setVoiceListening] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const accentMap: Record<Mood, string> = {
     calm: "#60a5fa",
@@ -1520,6 +1840,8 @@ export default function Page() {
   const liveLabel = loading ? "responding..." : hasConversationStarted ? "online" : "ready";
   const composerPlaceholder = moodPlaceholders[mood];
   const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud sync on" : "private draft";
+
+  const insights = useMemo(() => buildInsights(messages), [messages]);
 
   useEffect(() => {
     const update = () => setMobile(window.innerWidth < 900);
@@ -1638,8 +1960,8 @@ export default function Page() {
   }, []);
 
   const styles = useMemo(
-    () => createStyles(mobile, isPro, hasConversationStarted, loading, mood, accent),
-    [mobile, isPro, hasConversationStarted, loading, mood, accent]
+    () => createStyles(mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab),
+    [mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab]
   );
 
   async function syncSession(nextUser: User | null) {
@@ -1681,16 +2003,25 @@ export default function Page() {
       setMemorySummary(cloudMemory);
       window.localStorage.setItem(profileToMemoryKey(nextUser.email), cloudMemory);
     }
+
+    if (cloudMessages.length > 0) {
+      const longTerm = await callMemorySearch(
+        messages.filter((m) => m.role === "me").slice(-1)[0]?.text ?? "",
+        nextUser.id,
+        nextUser.email
+      );
+      setRetrievedMemories(longTerm);
+    }
   }
 
-  const incrementUsage = () => {
+  const incrementUsage = useCallback(() => {
     setUsage((prevUsage) => {
       const today = todayKey();
       return prevUsage.date === today
         ? { date: today, count: prevUsage.count + 1 }
         : { date: today, count: 1 };
     });
-  };
+  }, []);
 
   async function signInWithEmail() {
     if (!supabase) {
@@ -1746,6 +2077,61 @@ export default function Page() {
     }
   }
 
+  async function startVoice() {
+    if (voiceListening) {
+      recognitionRef.current?.stop?.();
+      return;
+    }
+
+    const recognition = createSpeechRecognition();
+    if (!recognition) {
+      setLoginStatus("Voice input is not supported in this browser.");
+      return;
+    }
+
+    recognition.lang = "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0]?.transcript ?? "")
+        .join("")
+        .trim();
+
+      if (transcript) {
+        setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      }
+    };
+
+    recognition.onend = () => {
+      setVoiceListening(false);
+    };
+
+    recognition.onerror = () => {
+      setVoiceListening(false);
+      setLoginStatus("Voice input stopped.");
+    };
+
+    recognitionRef.current = recognition;
+    setVoiceListening(true);
+    vibrate(10);
+    recognition.start();
+  }
+
+  async function searchLongTerm(query: string) {
+    if (!user) return [];
+
+    const localFallback = retrievedMemories.length > 0 ? retrievedMemories : [];
+    const fromServer = await callMemorySearch(query, user.id, user.email);
+    return fromServer.length > 0 ? fromServer : localFallback;
+  }
+
+  async function ingestLongTerm(text: string, kind: "user" | "assistant" | "summary") {
+    if (!user) return;
+    await ingestMemory(user, text, kind);
+  }
+
   async function sendMessage() {
     if (loading) return;
 
@@ -1756,6 +2142,8 @@ export default function Page() {
       setPaywallOpen(true);
       return;
     }
+
+    vibrate([12, 20, 12]);
 
     const userMessage: Message = {
       id: uid(),
@@ -1769,13 +2157,15 @@ export default function Page() {
 
     setMessages(nextMessages);
     setInput("");
+    setLoading(true);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-    setLoading(true);
     if (!isPro) incrementUsage();
 
     const startedAt = Date.now();
     const memoryPrompt = buildMemoryPrompt(nextMessages, mood, nextMemorySummary);
+    const longTermMemories = await searchLongTerm(trimmed);
+    setRetrievedMemories(longTermMemories);
 
     try {
       const response = await fetch("/api/generate", {
@@ -1787,6 +2177,8 @@ export default function Page() {
           isPro,
           memorySummary: nextMemorySummary,
           memory: memoryPrompt,
+          ragContext: longTermMemories.join("\n"),
+          longTermMemories,
         }),
       });
 
@@ -1819,6 +2211,9 @@ export default function Page() {
 
       if (user) {
         await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
+        await ingestLongTerm(trimmed, "user");
+        await ingestLongTerm(replyText, "assistant");
+        await ingestLongTerm(nextMemorySummary, "summary");
       }
     } catch {
       const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
@@ -1863,6 +2258,8 @@ export default function Page() {
     setIsPro(false);
     setUsage(defaultUsage());
     setMemorySummary("");
+    setRetrievedMemories([]);
+    setActiveTab("chat");
     textareaRef.current?.focus();
   }
 
@@ -1909,7 +2306,7 @@ export default function Page() {
   const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     e.target.style.height = "auto";
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
   };
 
   return (
@@ -2122,6 +2519,22 @@ export default function Page() {
           <div style={styles.topTitle}>
             <div style={styles.brand}>Future Me</div>
             <div style={styles.brandSub}>{user ? "synced cloud memory" : "guest mode · local memory"}</div>
+            <div style={styles.tabSwitcher}>
+              <button
+                type="button"
+                style={activeTab === "chat" ? styles.tabButtonActive : styles.tabButton}
+                onClick={() => setActiveTab("chat")}
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                style={activeTab === "insights" ? styles.tabButtonActive : styles.tabButton}
+                onClick={() => setActiveTab("insights")}
+              >
+                Insights
+              </button>
+            </div>
           </div>
 
           <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
@@ -2129,289 +2542,465 @@ export default function Page() {
           </button>
         </header>
 
-        {!hasConversationStarted ? (
-          <InteractiveGlassCard accent={accent} style={styles.hero}>
-            <div style={styles.heroShine} />
-            <div style={styles.heroTop}>
-              <span style={styles.badge}>✦ AI Mode Active</span>
-              <span style={styles.badgeAccent}>👑 {isPro ? "Pro" : "Pro Mode"}</span>
-            </div>
+        <AnimatePresence mode="wait" initial={false}>
+          {activeTab === "chat" ? (
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.22 }}
+              style={{ display: "grid", gap: 14 }}
+            >
+              {!hasConversationStarted ? (
+                <InteractiveGlassCard accent={accent} style={styles.hero}>
+                  <div style={styles.heroShine} />
+                  <div style={styles.heroTop}>
+                    <span style={styles.badge}>✦ AI Mode Active</span>
+                    <span style={styles.badgeAccent}>👑 {isPro ? "Pro" : "Pro Mode"}</span>
+                  </div>
 
-            <div style={styles.heroTitle}>
-              Your future self, <br />
-              but <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>sharper.</span>
-            </div>
+                  <div style={styles.heroTitle}>
+                    Your future self, <br />
+                    but <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>sharper.</span>
+                  </div>
 
-            <div style={styles.heroSub}>
-              A private space where AI remembers, understands your patterns, and tells you what you need to hear.
-            </div>
+                  <div style={styles.heroSub}>
+                    A private space where AI remembers, understands your patterns, and tells you what you need to hear.
+                  </div>
 
-            <div style={styles.heroMetrics}>
-              <div style={styles.metricCard}>
-                <div style={styles.metricValue}>{remainingToday}</div>
-                <div style={styles.metricLabel}>Messages today</div>
-              </div>
-              <div style={styles.metricCard}>
-                <div style={styles.metricValue}>{isPro ? "∞" : "Pro Mode"}</div>
-                <div style={styles.metricLabel}>{isPro ? "Unlimited" : "Locked"}</div>
-              </div>
-              <div style={styles.metricCard}>
-                <div style={styles.metricValue}>{memorySummary ? "3 days" : "—"}</div>
-                <div style={styles.metricLabel}>Memory connected</div>
-              </div>
-            </div>
-          </InteractiveGlassCard>
-        ) : (
-          <InteractiveGlassCard accent={accent} style={styles.compactHero}>
-            <div style={styles.heroTop}>
-              <span style={styles.badge}>Conversation in motion</span>
-              <span style={styles.badgeAccent}>{memoryBadge}</span>
-            </div>
-
-            <div style={styles.compactTitle}>The thread is alive.</div>
-            <div style={styles.compactSub}>
-              You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and keep
-              the story moving.
-            </div>
-
-            <div style={styles.compactActionRow}>
-              {memorySummary ? (
-                <button style={styles.compactButton} onClick={continueFromYesterday}>
-                  Continue from yesterday
-                </button>
+                  <div style={styles.heroMetrics}>
+                    <div style={styles.metricCard}>
+                      <div style={styles.metricValue}>{remainingToday}</div>
+                      <div style={styles.metricLabel}>Messages today</div>
+                    </div>
+                    <div style={styles.metricCard}>
+                      <div style={styles.metricValue}>{isPro ? "∞" : "Pro Mode"}</div>
+                      <div style={styles.metricLabel}>{isPro ? "Unlimited" : "Locked"}</div>
+                    </div>
+                    <div style={styles.metricCard}>
+                      <div style={styles.metricValue}>{memorySummary ? "3 days" : "—"}</div>
+                      <div style={styles.metricLabel}>Memory connected</div>
+                    </div>
+                  </div>
+                </InteractiveGlassCard>
               ) : (
-                <button style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>
-                  Keep writing
-                </button>
+                <InteractiveGlassCard accent={accent} style={styles.compactHero}>
+                  <div style={styles.heroTop}>
+                    <span style={styles.badge}>Conversation in motion</span>
+                    <span style={styles.badgeAccent}>{memoryBadge}</span>
+                  </div>
+
+                  <div style={styles.compactTitle}>The thread is alive.</div>
+                  <div style={styles.compactSub}>
+                    You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and
+                    keep the story moving.
+                  </div>
+
+                  <div style={styles.compactActionRow}>
+                    {memorySummary ? (
+                      <button style={styles.compactButton} onClick={continueFromYesterday}>
+                        Continue from yesterday
+                      </button>
+                    ) : (
+                      <button style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>
+                        Keep writing
+                      </button>
+                    )}
+                    <button style={styles.compactGhost} onClick={() => setMenuOpen(true)}>
+                      Open actions
+                    </button>
+                  </div>
+                </InteractiveGlassCard>
               )}
-              <button style={styles.compactGhost} onClick={() => setMenuOpen(true)}>
-                Open actions
-              </button>
-            </div>
-          </InteractiveGlassCard>
-        )}
 
-        <div style={styles.statusRow}>
-          <span style={styles.pill}>
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 999,
-                background: isPro ? "#4caf7a" : "#ff9e5e",
-                boxShadow: `0 0 8px ${isPro ? "#4caf7a" : "#ff9e5e"}`,
-              }}
-            />
-            {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
-          </span>
-          <span style={styles.pill}>{user ? "synced to cloud" : "guest mode"}</span>
-          <span style={styles.pill}>{visibleMessageCount} messages</span>
-          {!user ? (
-            <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
-              Save with email
-            </button>
-          ) : (
-            <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>
-              Account
-            </button>
-          )}
-        </div>
-
-        <InteractiveGlassCard accent={accent} style={styles.memoryCard}>
-          <div style={styles.memoryGlow} />
-          <div style={styles.memoryHeader}>
-            <div style={styles.memoryTitleWrap}>
-              <div style={styles.memoryIcon}>🧠</div>
-              <div>
-                <div style={styles.memoryTitle}>Memory Snapshot</div>
-                <div style={styles.memoryMeta}>AI remembers the thread</div>
-              </div>
-            </div>
-            <div style={styles.memoryUpdated}>Updated 2 min ago</div>
-          </div>
-
-          <div style={styles.memoryQuote}>
-            “{memorySummary ||
-              "You’ve been thinking about direction, fear of wasting time, and wanting to build something real. You value freedom, growth and honesty with yourself."}
-            ”
-          </div>
-        </InteractiveGlassCard>
-
-        <section>
-          <div style={styles.moodSection}>
-            <div>
-              <div style={styles.moodHeading}>Choose Mood</div>
-              <div style={styles.moodSub}>AI adapts tone to your current mindset</div>
-            </div>
-
-            <div style={styles.moodRow}>
-              {(Object.keys(moodLabels) as Mood[]).map((item) => {
-                const active = item === mood;
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => setMood(item)}
-                    style={active ? styles.moodButtonActive : styles.moodButton}
-                  >
-                    <div style={{ ...styles.moodGlow, opacity: active ? 1 : 0 }} />
-                    <div style={{ ...styles.moodIcon, color: active ? accent : "rgba(255,255,255,0.58)" }}>
-                      {moodIcons[item]}
-                    </div>
-                    <div style={styles.moodLabel}>{moodLabels[item]}</div>
-                    <div style={styles.moodLabelSub}>{active ? moodHints[item] : " "}</div>
+              <div style={styles.statusRow}>
+                <span style={styles.pill}>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 999,
+                      background: isPro ? "#4caf7a" : "#ff9e5e",
+                      boxShadow: `0 0 8px ${isPro ? "#4caf7a" : "#ff9e5e"}`,
+                    }}
+                  />
+                  {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
+                </span>
+                <span style={styles.pill}>{user ? "synced to cloud" : "guest mode"}</span>
+                <span style={styles.pill}>{visibleMessageCount} messages</span>
+                {!user ? (
+                  <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
+                    Save with email
                   </button>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        <InteractiveGlassCard accent={accent} style={styles.aiPanel}>
-          <div style={styles.aiHeader}>
-            <div style={styles.aiHeaderLeft}>
-              <div style={styles.avatar}>FM</div>
-              <div style={{ minWidth: 0 }}>
-                <div style={styles.aiTitle}>Future Me</div>
-                <div style={styles.aiSub}>
-                  {hasConversationStarted ? "Online & remembering" : "Ready to respond"}
-                </div>
+                ) : (
+                  <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>
+                    Account
+                  </button>
+                )}
               </div>
-            </div>
 
-            <div style={styles.liveChip}>
-              <span style={styles.liveDot} />
-              {liveLabel}
-            </div>
-          </div>
-
-          <div style={styles.aiChips}>
-            <span style={styles.aiChip}>memory {memorySummary ? "live" : "empty"}</span>
-            <span style={styles.aiChip}>session {user ? "cloud" : "local"}</span>
-            <span style={styles.aiChip}>mode {isPro ? "pro" : "free"}</span>
-          </div>
-        </InteractiveGlassCard>
-
-        <InteractiveGlassCard accent={accent} style={styles.threadCard}>
-          <div style={styles.threadGlow} />
-          <div style={styles.threadHeader}>
-            <div style={styles.threadLeft}>
-              <div style={styles.avatar}>FM</div>
-              <div style={styles.threadText}>
-                <div style={styles.threadName}>Future Me</div>
-                <div style={styles.threadMeta}>private chat · persistent memory</div>
-              </div>
-            </div>
-
-            <div style={styles.liveChip}>
-              <span style={styles.liveDot} />
-              {liveLabel}
-            </div>
-          </div>
-
-          <div style={styles.threadBody}>
-            <div style={styles.stream}>
-              <AnimatePresence initial={false} mode="popLayout">
-                {messages.map((message) => {
-                  const isUser = message.role === "me";
-                  const roleStyle = isUser
-                    ? { ...styles.messageRole, ...styles.messageRoleMe }
-                    : styles.messageRole;
-
-                  return (
-                    <motion.div
-                      key={message.id}
-                      layout
-                      initial={{ opacity: 0, y: 14, scale: 0.985 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.985 }}
-                      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                      style={{
-                        ...styles.messageRow,
-                        justifyContent: isUser ? "flex-end" : "flex-start",
-                        animation: "floatIn 220ms ease both",
-                      }}
-                    >
-                      <article
-                        style={{
-                          ...styles.messageBubble,
-                          ...(isUser ? styles.meBubble : styles.futureMeBubble),
-                        }}
-                      >
-                        <div style={styles.messageTop}>
-                          <span style={roleStyle}>{isUser ? "You" : "Future Me"}</span>
-                          <button
-                            type="button"
-                            style={styles.copyButton}
-                            onClick={() => void copyMessage(message.text, message.id)}
-                          >
-                            {copiedId === message.id ? "Copied" : "Copy"}
-                          </button>
-                        </div>
-
-                        <div style={styles.messageText}>{message.text}</div>
-                        <div style={styles.timestamp}>{message.time}</div>
-                      </article>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-
-              <AnimatePresence initial={false}>
-                {loading ? (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    style={styles.typingRow}
-                  >
-                    <div style={styles.typingBubble}>
-                      <span style={styles.typingDots}>
-                        <span style={styles.typingDot} />
-                        <span style={{ ...styles.typingDot, animationDelay: "120ms" }} />
-                        <span style={{ ...styles.typingDot, animationDelay: "240ms" }} />
-                      </span>{" "}
-                      typing…
+              <InteractiveGlassCard accent={accent} style={styles.memoryCard}>
+                <div style={styles.memoryGlow} />
+                <div style={styles.memoryHeader}>
+                  <div style={styles.memoryTitleWrap}>
+                    <div style={styles.memoryIcon}>🧠</div>
+                    <div>
+                      <div style={styles.memoryTitle}>Long-term Memory</div>
+                      <div style={styles.memoryMeta}>RAG / vector search ready</div>
                     </div>
-                  </motion.div>
-                ) : null}
-              </AnimatePresence>
+                  </div>
+                  <div style={styles.memoryUpdated}>Updated just now</div>
+                </div>
 
-              <div ref={bottomRef} />
-            </div>
-          </div>
-        </InteractiveGlassCard>
+                <div style={styles.memoryQuote}>
+                  “
+                  {memorySummary ||
+                    "You’ve been thinking about direction, fear of wasting time, and wanting to build something real. You value freedom, growth and honesty with yourself."}
+                  ”
+                </div>
 
-        <InteractiveGlassCard accent={accent} style={styles.composerShell}>
-          <div style={styles.composerTop}>
-            <span style={styles.composerChip}>{moodLabels[mood]} mode</span>
-            <span style={styles.composerChip}>{memoryBadge}</span>
-          </div>
+                <div style={styles.memoryPills}>
+                  {(retrievedMemories.length > 0
+                    ? retrievedMemories
+                    : [
+                        "No long-term hits yet.",
+                        "Add /api/memory/search and /api/memory/ingest for vector memory.",
+                      ]
+                  ).slice(0, 3).map((item, idx) => (
+                    <span key={`${item}-${idx}`} style={styles.memoryPill}>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </InteractiveGlassCard>
 
-          <div style={styles.composerRow}>
-            <textarea
-              ref={textareaRef}
-              style={{
-                ...styles.composerTextarea,
-                boxShadow: `inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 1px ${hexToRgba(accent, 0.02)}`,
-              }}
-              value={input}
-              onChange={handleTextareaChange}
-              onKeyDown={handleKeyDown}
-              placeholder={composerPlaceholder}
-              rows={1}
-            />
+              <section>
+                <div style={styles.moodSection}>
+                  <div>
+                    <div style={styles.moodHeading}>Choose Mood</div>
+                    <div style={styles.moodSub}>AI adapts tone to your current mindset</div>
+                  </div>
 
-            <button style={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
-              {loading ? "Thinking..." : "Send"}
-            </button>
-          </div>
+                  <div style={styles.moodRow}>
+                    {(Object.keys(moodLabels) as Mood[]).map((item) => {
+                      const active = item === mood;
+                      return (
+                        <button
+                          key={item}
+                          type="button"
+                          onClick={() => {
+                            setMood(item);
+                            vibrate(8);
+                          }}
+                          style={active ? styles.moodButtonActive : styles.moodButton}
+                        >
+                          <div style={{ ...styles.moodGlow, opacity: active ? 1 : 0 }} />
+                          <div style={{ ...styles.moodIcon, color: active ? accent : "rgba(255,255,255,0.58)" }}>
+                            {moodIcons[item]}
+                          </div>
+                          <div style={styles.moodLabel}>{moodLabels[item]}</div>
+                          <div style={styles.moodLabelSub}>{active ? moodHints[item] : " "}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </section>
 
-          <div style={styles.helper}>
-            Press Enter to send · Shift+Enter for a new line ·{" "}
-            {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
-          </div>
-        </InteractiveGlassCard>
+              <InteractiveGlassCard accent={accent} style={styles.aiPanel}>
+                <div style={styles.aiHeader}>
+                  <div style={styles.aiHeaderLeft}>
+                    <div style={styles.avatar}>FM</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={styles.aiTitle}>Future Me</div>
+                      <div style={styles.aiSub}>
+                        {hasConversationStarted ? "Online & remembering" : "Ready to respond"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={styles.liveChip}>
+                    <span style={styles.liveDot} />
+                    {liveLabel}
+                  </div>
+                </div>
+
+                <div style={styles.aiChips}>
+                  <span style={styles.aiChip}>memory {memorySummary ? "live" : "empty"}</span>
+                  <span style={styles.aiChip}>session {user ? "cloud" : "local"}</span>
+                  <span style={styles.aiChip}>mode {isPro ? "pro" : "free"}</span>
+                </div>
+              </InteractiveGlassCard>
+
+              <InteractiveGlassCard accent={accent} style={styles.threadCard}>
+                <div style={styles.threadGlow} />
+                <div style={styles.threadHeader}>
+                  <div style={styles.threadLeft}>
+                    <div style={styles.avatar}>FM</div>
+                    <div style={styles.threadText}>
+                      <div style={styles.threadName}>Future Me</div>
+                      <div style={styles.threadMeta}>private chat · persistent memory</div>
+                    </div>
+                  </div>
+
+                  <div style={styles.liveChip}>
+                    <span style={styles.liveDot} />
+                    {liveLabel}
+                  </div>
+                </div>
+
+                <div style={styles.threadBody}>
+                  <div style={styles.stream}>
+                    <AnimatePresence initial={false} mode="popLayout">
+                      {messages.map((message) => {
+                        const isUser = message.role === "me";
+                        const roleStyle = isUser
+                          ? { ...styles.messageRole, ...styles.messageRoleMe }
+                          : styles.messageRole;
+
+                        return (
+                          <motion.div
+                            key={message.id}
+                            layout
+                            initial={{ opacity: 0, y: 14, scale: 0.985 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -10, scale: 0.985 }}
+                            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                            style={{
+                              ...styles.messageRow,
+                              justifyContent: isUser ? "flex-end" : "flex-start",
+                              animation: "floatIn 220ms ease both",
+                            }}
+                          >
+                            <article
+                              style={{
+                                ...styles.messageBubble,
+                                ...(isUser ? styles.meBubble : styles.futureMeBubble),
+                              }}
+                            >
+                              <div style={styles.messageTop}>
+                                <span style={roleStyle}>{isUser ? "You" : "Future Me"}</span>
+                                <button
+                                  type="button"
+                                  style={styles.copyButton}
+                                  onClick={() => void copyMessage(message.text, message.id)}
+                                >
+                                  {copiedId === message.id ? "Copied" : "Copy"}
+                                </button>
+                              </div>
+
+                              <div style={styles.messageText}>{message.text}</div>
+                              <div style={styles.timestamp}>{message.time}</div>
+                            </article>
+                          </motion.div>
+                        );
+                      })}
+                    </AnimatePresence>
+
+                    <AnimatePresence initial={false}>
+                      {loading ? (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          style={styles.typingRow}
+                        >
+                          <div style={styles.typingBubble}>
+                            <span style={styles.typingDots}>
+                              <span style={styles.typingDot} />
+                              <span style={{ ...styles.typingDot, animationDelay: "120ms" }} />
+                              <span style={{ ...styles.typingDot, animationDelay: "240ms" }} />
+                            </span>{" "}
+                            typing…
+                          </div>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+
+                    <div ref={bottomRef} />
+                  </div>
+                </div>
+              </InteractiveGlassCard>
+
+              <InteractiveGlassCard accent={accent} style={styles.composerShell}>
+                <div style={styles.composerTop}>
+                  <span style={styles.composerChip}>{moodLabels[mood]} mode</span>
+                  <span style={styles.composerChip}>{memoryBadge}</span>
+                </div>
+
+                <div style={styles.composerRow}>
+                  <textarea
+                    ref={textareaRef}
+                    style={{
+                      ...styles.composerTextarea,
+                      boxShadow: `inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 1px ${hexToRgba(accent, 0.02)}`,
+                    }}
+                    value={input}
+                    onChange={handleTextareaChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder={composerPlaceholder}
+                    rows={1}
+                  />
+
+                  <button style={styles.micButton} onClick={() => void startVoice()} disabled={loading}>
+                    {voiceListening ? "■" : "◉"}
+                  </button>
+
+                  <button style={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
+                    {loading ? "Thinking..." : "Send"}
+                  </button>
+                </div>
+
+                <div style={styles.helper}>
+                  Press Enter to send · Shift+Enter for a new line ·{" "}
+                  {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
+                </div>
+
+                <div style={styles.voiceHint}>
+                  Haptics fires on send and mood changes. Voice input uses the browser speech engine when available.
+                </div>
+              </InteractiveGlassCard>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="insights"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.22 }}
+              style={{ display: "grid", gap: 14 }}
+            >
+              <InteractiveGlassCard accent={accent} style={styles.hero}>
+                <div style={styles.heroTop}>
+                  <span style={styles.badge}>Insights mode</span>
+                  <span style={styles.badgeAccent}>patterns from your chats</span>
+                </div>
+
+                <div style={styles.heroTitle}>
+                  Your thoughts,
+                  <br />
+                  mapped into <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>patterns.</span>
+                </div>
+
+                <div style={styles.heroSub}>
+                  This view turns your conversation history into something you can actually read at a glance: recurring
+                  themes, activity over the week, and the emotional shape of the thread.
+                </div>
+              </InteractiveGlassCard>
+
+              <div style={styles.insightsGrid}>
+                <InteractiveGlassCard accent={accent} style={styles.insightCard}>
+                  <div style={styles.insightTitle}>Week Activity</div>
+                  <div style={styles.insightSub}>
+                    Messages per day across the last 7 days.
+                  </div>
+
+                  <div style={styles.sparkWrap}>
+                    <div style={styles.sparkBars}>
+                      {insights.weeklyActivity.map((value, index) => {
+                        const max = Math.max(1, ...insights.weeklyActivity);
+                        const height = `${Math.max(12, (value / max) * 100)}%`;
+                        return (
+                          <div key={index} style={styles.sparkBar}>
+                            <div style={{ ...styles.sparkFill, height }} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={styles.sparkLabelRow}>
+                      {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                        <span key={day}>{day}</span>
+                      ))}
+                    </div>
+                  </div>
+                </InteractiveGlassCard>
+
+                <InteractiveGlassCard accent={accent} style={styles.insightCard}>
+                  <div style={styles.insightTitle}>Snapshot</div>
+                  <div style={styles.insightSub}>
+                    A quick summary of the thread shape right now.
+                  </div>
+
+                  <div style={styles.miniCards}>
+                    <div style={styles.miniCard}>
+                      <div style={styles.miniValue}>{insights.totalUserMessages}</div>
+                      <div style={styles.miniLabel}>User messages</div>
+                    </div>
+                    <div style={styles.miniCard}>
+                      <div style={styles.miniValue}>{insights.avgLength}</div>
+                      <div style={styles.miniLabel}>Avg. length</div>
+                    </div>
+                    <div style={styles.miniCard}>
+                      <div style={styles.miniValue}>{insights.dominantTone}</div>
+                      <div style={styles.miniLabel}>Dominant tone</div>
+                    </div>
+                    <div style={styles.miniCard}>
+                      <div style={styles.miniValue}>{retrievedMemories.length}</div>
+                      <div style={styles.miniLabel}>RAG memories</div>
+                    </div>
+                  </div>
+
+                  <div style={styles.voiceHint}>
+                    If you add pgvector + embeddings, this panel can surface actual long-term memory matches instead of
+                    only the local fallback.
+                  </div>
+                </InteractiveGlassCard>
+              </div>
+
+              <InteractiveGlassCard accent={accent} style={styles.insightCard}>
+                <div style={styles.insightTitle}>Recurring themes</div>
+                <div style={styles.insightSub}>
+                  These are the topics that appear most often in your messages.
+                </div>
+
+                <div style={styles.themeList}>
+                  {(insights.topThemes.length > 0 ? insights.topThemes : [
+                    { label: "No clear themes yet", count: 0 },
+                  ]).map((item) => {
+                    const max = Math.max(1, ...insights.topThemes.map((t) => t.count), 1);
+                    return (
+                      <div key={item.label} style={styles.themeItem}>
+                        <div style={styles.themeLabel}>{item.label}</div>
+                        <div style={styles.themeBar}>
+                          <div
+                            style={{
+                              ...styles.themeBarFill,
+                              width: `${(item.count / max) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <div style={styles.themeCount}>{item.count}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </InteractiveGlassCard>
+
+              <InteractiveGlassCard accent={accent} style={styles.insightCard}>
+                <div style={styles.insightTitle}>Long-term memories</div>
+                <div style={styles.insightSub}>
+                  Retrieved via the RAG hook. Add Supabase vector search to make these real across weeks and months.
+                </div>
+
+                <div style={styles.memoryPills}>
+                  {(retrievedMemories.length > 0
+                    ? retrievedMemories
+                    : [
+                        "No vector hits yet.",
+                        "Connect /api/memory/search and pgvector for real recall.",
+                        "The app is already wired to send the context.",
+                      ]
+                  ).map((item, idx) => (
+                    <span key={`${item}-${idx}`} style={styles.memoryPill}>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </InteractiveGlassCard>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </main>
   );
