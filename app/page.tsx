@@ -356,6 +356,9 @@ function writeEmailCooldownUntil(ts: number) {
   window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
 }
 
+// ==========================================
+// UUDET TUMMAN TEEMAN TYYLIT (GLASSMORPHISM)
+// ==========================================
 function createStyles(
   mobile: boolean,
   isPro: boolean,
@@ -364,7 +367,12 @@ function createStyles(
   mood: Mood,
   accent: string
 ): Record<string, CSSProperties> {
-  // Styles have been kept exactly as they were to preserve your UI completely
+  const panelBg = "linear-gradient(145deg, rgba(30, 32, 44, 0.65), rgba(20, 22, 32, 0.45))";
+  const panelBorder = "1px solid rgba(255, 255, 255, 0.08)";
+  const panelShadow = "0 24px 64px rgba(0, 0, 0, 0.3)";
+  const textMain = "#ffffff";
+  const textMuted = "rgba(255, 255, 255, 0.55)";
+
   return {
     page: {
       minHeight: "100dvh",
@@ -373,9 +381,8 @@ function createStyles(
       overflowX: "hidden",
       WebkitOverflowScrolling: "touch",
       padding: mobile ? 10 : 16,
-      background:
-        "radial-gradient(circle at 50% 10%, rgba(255,255,255,0.92), rgba(255,255,255,0.0) 30%), radial-gradient(circle at 20% 20%, rgba(155,120,255,0.16), transparent 28%), radial-gradient(circle at 85% 18%, rgba(255,194,117,0.14), transparent 24%), linear-gradient(180deg, #f6f0e8 0%, #ebe4d8 100%)",
-      color: "#101826",
+      background: "#08080c", // Dark base
+      color: textMain,
       fontFamily:
         'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       position: "relative",
@@ -387,30 +394,30 @@ function createStyles(
       margin: "0 auto",
       display: "flex",
       flexDirection: "column",
-      gap: 12,
-      paddingBottom: 18,
+      gap: 16,
+      paddingBottom: 24,
       position: "relative",
       zIndex: 1,
     },
     glowA: {
       position: "fixed",
-      inset: "auto auto 6% -8%",
-      width: 280,
-      height: 280,
+      inset: "20% auto auto -10%",
+      width: 500,
+      height: 500,
       borderRadius: 999,
-      background: "radial-gradient(circle, rgba(255,255,255,0.60), rgba(255,255,255,0))",
-      filter: "blur(20px)",
+      background: "radial-gradient(circle, rgba(255, 120, 50, 0.18), transparent 60%)",
+      filter: "blur(60px)",
       pointerEvents: "none",
       zIndex: 0,
     },
     glowB: {
       position: "fixed",
-      inset: "8% -6% auto auto",
-      width: 330,
-      height: 330,
+      inset: "auto -10% -10% auto",
+      width: 600,
+      height: 600,
       borderRadius: 999,
-      background: "radial-gradient(circle, rgba(255,255,255,0.36), rgba(255,255,255,0))",
-      filter: "blur(24px)",
+      background: "radial-gradient(circle, rgba(130, 80, 255, 0.15), transparent 60%)",
+      filter: "blur(80px)",
       pointerEvents: "none",
       zIndex: 0,
     },
@@ -420,11 +427,11 @@ function createStyles(
       justifyContent: "space-between",
       gap: 12,
       padding: "10px 10px",
-      background: "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.56))",
+      background: panelBg,
       borderRadius: 24,
-      border: "1px solid rgba(16,24,38,0.08)",
-      boxShadow: "0 16px 46px rgba(16,24,38,0.08)",
-      backdropFilter: "blur(18px)",
+      border: panelBorder,
+      boxShadow: panelShadow,
+      backdropFilter: "blur(24px)",
     },
     topTitle: {
       display: "flex",
@@ -440,48 +447,49 @@ function createStyles(
       fontWeight: 900,
       letterSpacing: "-0.04em",
       lineHeight: 1.05,
+      color: textMain,
     },
     brandSub: {
       fontSize: 12,
-      color: "rgba(16,24,38,0.58)",
+      color: "rgba(59, 198, 161, 0.9)", // Vihreä status-väri
       maxWidth: 220,
       whiteSpace: "nowrap",
       overflow: "hidden",
       textOverflow: "ellipsis",
+      fontWeight: 600,
     },
     iconButton: {
       width: 44,
       height: 44,
       borderRadius: 16,
-      border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.80)",
-      color: "#101826",
+      border: panelBorder,
+      background: "rgba(255,255,255,0.05)",
+      color: textMain,
       display: "grid",
       placeItems: "center",
       cursor: "pointer",
-      boxShadow: "0 12px 26px rgba(16,24,38,0.05)",
+      boxShadow: "0 8px 16px rgba(0,0,0,0.2)",
+      transition: "background 0.2s ease",
     },
     hero: {
       borderRadius: 30,
-      padding: mobile ? 18 : 22,
-      background: hasConversationStarted
-        ? "linear-gradient(135deg, rgba(255,255,255,0.84), rgba(255,255,255,0.62))"
-        : "linear-gradient(180deg, rgba(255,255,255,0.88), rgba(255,255,255,0.60))",
-      border: "1px solid rgba(16,24,38,0.08)",
-      boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
-      backdropFilter: "blur(18px)",
+      padding: mobile ? 22 : 32,
+      background: panelBg,
+      border: panelBorder,
+      boxShadow: panelShadow,
+      backdropFilter: "blur(32px)",
       overflow: "hidden",
       position: "relative",
       transition: "all 0.45s cubic-bezier(0.22, 1, 0.36, 1)",
     },
     heroShine: {
       position: "absolute",
-      inset: "-40% auto auto 54%",
-      width: 260,
-      height: 260,
+      inset: "-30% -10% auto auto",
+      width: 300,
+      height: 300,
       borderRadius: 999,
-      background: `radial-gradient(circle, ${accent}44, ${accent}00)`,
-      filter: "blur(8px)",
+      background: `radial-gradient(circle, ${accent}33, transparent)`,
+      filter: "blur(30px)",
       pointerEvents: "none",
     },
     heroTop: {
@@ -490,7 +498,7 @@ function createStyles(
       alignItems: "flex-start",
       gap: 12,
       flexWrap: "wrap",
-      marginBottom: 12,
+      marginBottom: 16,
       position: "relative",
       zIndex: 1,
     },
@@ -498,46 +506,45 @@ function createStyles(
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "8px 12px",
+      padding: "8px 14px",
       borderRadius: 999,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.72))",
-      border: "1px solid rgba(16,24,38,0.06)",
+      background: "rgba(130, 80, 255, 0.15)",
+      border: "1px solid rgba(130, 80, 255, 0.3)",
+      color: "#d0b3ff",
       fontSize: 12,
       fontWeight: 800,
       letterSpacing: "0.02em",
-      width: "fit-content",
-      boxShadow: "0 8px 20px rgba(16,24,38,0.04)",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
     },
     badgeAccent: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "8px 12px",
+      padding: "8px 14px",
       borderRadius: 999,
       background: isPro
-        ? "linear-gradient(180deg, rgba(76,175,122,0.16), rgba(76,175,122,0.10))"
-        : "linear-gradient(180deg, rgba(141,107,61,0.14), rgba(141,107,61,0.08))",
-      border: "1px solid rgba(16,24,38,0.06)",
-      color: isPro ? "#206f47" : "#7c5a2f",
+        ? "rgba(255, 170, 0, 0.15)"
+        : "rgba(255, 255, 255, 0.05)",
+      border: isPro ? "1px solid rgba(255, 170, 0, 0.3)" : panelBorder,
+      color: isPro ? "#ffd073" : textMain,
       fontSize: 12,
       fontWeight: 800,
-      width: "fit-content",
-      boxShadow: "0 8px 20px rgba(16,24,38,0.04)",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
     },
     heroTitle: {
-      fontSize: mobile ? 30 : 42,
+      fontSize: mobile ? 34 : 48,
       fontWeight: 950,
-      letterSpacing: "-0.06em",
-      lineHeight: 0.96,
+      letterSpacing: "-0.05em",
+      lineHeight: 1.05,
       maxWidth: 560,
-      marginBottom: 10,
+      marginBottom: 12,
       position: "relative",
       zIndex: 1,
     },
     heroSub: {
-      fontSize: mobile ? 14 : 15,
+      fontSize: mobile ? 15 : 16,
       lineHeight: 1.6,
-      color: "rgba(16,24,38,0.68)",
+      color: textMuted,
       maxWidth: 720,
       position: "relative",
       zIndex: 1,
@@ -545,36 +552,38 @@ function createStyles(
     heroMetrics: {
       display: "grid",
       gridTemplateColumns: mobile ? "1fr 1fr" : "repeat(3, minmax(0, 1fr))",
-      gap: 10,
-      marginTop: 18,
+      gap: 12,
+      marginTop: 24,
       position: "relative",
       zIndex: 1,
     },
     metricCard: {
       borderRadius: 22,
-      padding: 14,
-      background: "rgba(255,255,255,0.70)",
-      border: "1px solid rgba(16,24,38,0.07)",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
+      padding: 16,
+      background: "rgba(0, 0, 0, 0.2)",
+      border: "1px solid rgba(255,255,255,0.05)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
     },
     metricValue: {
-      fontSize: mobile ? 20 : 24,
+      fontSize: mobile ? 22 : 26,
       fontWeight: 900,
       letterSpacing: "-0.04em",
       lineHeight: 1,
+      color: textMain,
     },
     metricLabel: {
       fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
-      marginTop: 4,
+      color: textMuted,
+      marginTop: 6,
+      fontWeight: 500,
     },
     compactHero: {
       borderRadius: 30,
-      padding: mobile ? 18 : 22,
-      background: "linear-gradient(135deg, rgba(255,255,255,0.86), rgba(255,255,255,0.60))",
-      border: "1px solid rgba(16,24,38,0.08)",
-      boxShadow: "0 22px 60px rgba(16,24,38,0.08)",
-      backdropFilter: "blur(18px)",
+      padding: mobile ? 20 : 26,
+      background: panelBg,
+      border: panelBorder,
+      boxShadow: panelShadow,
+      backdropFilter: "blur(32px)",
       overflow: "hidden",
       position: "relative",
     },
@@ -589,11 +598,11 @@ function createStyles(
       marginTop: 10,
       fontSize: mobile ? 14 : 15,
       lineHeight: 1.6,
-      color: "rgba(16,24,38,0.68)",
+      color: textMuted,
       maxWidth: 760,
     },
     compactActionRow: {
-      marginTop: 14,
+      marginTop: 16,
       display: "flex",
       gap: 10,
       flexWrap: "wrap",
@@ -601,60 +610,62 @@ function createStyles(
     compactButton: {
       border: 0,
       borderRadius: 16,
-      padding: "11px 14px",
-      background: "#101826",
-      color: "#f5efe6",
+      padding: "12px 18px",
+      background: textMain,
+      color: "#08080c",
       fontWeight: 900,
-      boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+      boxShadow: "0 8px 20px rgba(255,255,255,0.15)",
     },
     compactGhost: {
-      border: "1px solid rgba(16,24,38,0.08)",
+      border: panelBorder,
       borderRadius: 16,
-      padding: "11px 14px",
-      background: "rgba(255,255,255,0.82)",
-      color: "#101826",
+      padding: "12px 18px",
+      background: "rgba(255,255,255,0.05)",
+      color: textMain,
       fontWeight: 800,
-      boxShadow: "0 10px 24px rgba(16,24,38,0.05)",
+      boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
     },
     statusRow: {
       display: "flex",
       flexWrap: "wrap",
-      gap: 8,
+      gap: 10,
       alignItems: "center",
+      padding: "0 4px",
     },
     pill: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "8px 12px",
+      padding: "8px 14px",
       borderRadius: 999,
-      border: "1px solid rgba(16,24,38,0.06)",
-      background: "rgba(255,255,255,0.55)",
-      color: "rgba(16,24,38,0.75)",
+      border: panelBorder,
+      background: "rgba(20, 22, 32, 0.6)",
+      color: textMuted,
       fontSize: 12,
+      fontWeight: 600,
       backdropFilter: "blur(12px)",
-      boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
     },
     pillAction: {
-      border: "1px solid rgba(16,24,38,0.06)",
-      background: "rgba(255,255,255,0.72)",
-      color: "#101826",
-      padding: "8px 12px",
+      border: panelBorder,
+      background: "rgba(255,255,255,0.1)",
+      color: textMain,
+      padding: "8px 14px",
       borderRadius: 999,
       fontSize: 12,
       fontWeight: 700,
-      boxShadow: "0 10px 30px rgba(16,24,38,0.04)",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
       cursor: "pointer",
     },
     memoryCard: {
       borderRadius: 26,
-      padding: 16,
-      background: "linear-gradient(180deg, rgba(52,32,40,0.94), rgba(33,24,34,0.96))",
-      border: "1px solid rgba(255,255,255,0.08)",
-      boxShadow: "0 20px 56px rgba(26,18,26,0.18)",
-      backdropFilter: "blur(18px)",
+      padding: 18,
+      background: "linear-gradient(180deg, rgba(40, 30, 45, 0.7), rgba(20, 15, 25, 0.8))",
+      border: "1px solid rgba(177, 97, 255, 0.2)",
+      boxShadow: "0 24px 64px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.1)",
+      backdropFilter: "blur(32px)",
       display: "grid",
-      gap: 12,
+      gap: 14,
       position: "relative",
       overflow: "hidden",
     },
@@ -668,136 +679,143 @@ function createStyles(
     memoryTitleWrap: {
       display: "flex",
       alignItems: "center",
-      gap: 10,
+      gap: 12,
       minWidth: 0,
     },
     memoryIcon: {
-      width: 32,
-      height: 32,
+      width: 36,
+      height: 36,
       borderRadius: 12,
       display: "grid",
       placeItems: "center",
-      background: "linear-gradient(180deg, rgba(255,139,214,0.24), rgba(122,93,255,0.18))",
-      color: "#f7b3ff",
-      boxShadow: "0 0 0 1px rgba(255,255,255,0.05) inset",
+      background: "linear-gradient(180deg, rgba(177,97,255,0.3), rgba(122,93,255,0.1))",
+      color: "#d0b3ff",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2)",
       flex: "0 0 auto",
+      fontSize: 18,
     },
     memoryTitle: {
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: 900,
       letterSpacing: "-0.03em",
-      color: "#fff",
+      color: textMain,
     },
     memoryMeta: {
       fontSize: 12,
-      color: "rgba(255,255,255,0.64)",
+      color: textMuted,
       marginTop: 2,
     },
     memoryUpdated: {
       fontSize: 12,
-      color: "rgba(255,255,255,0.66)",
+      color: textMuted,
       whiteSpace: "nowrap",
     },
     memoryQuote: {
       borderRadius: 20,
-      padding: 14,
-      background: "linear-gradient(180deg, rgba(17,14,22,0.96), rgba(28,22,30,0.96))",
-      color: "#f8f5ff",
-      border: "1px solid rgba(255,255,255,0.06)",
-      boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.02)",
+      padding: 16,
+      background: "rgba(0, 0, 0, 0.3)",
+      color: "rgba(255,255,255,0.85)",
+      border: "1px solid rgba(255,255,255,0.05)",
       lineHeight: 1.6,
-      fontSize: 13,
+      fontSize: 14,
+      fontStyle: "italic",
       whiteSpace: "pre-wrap",
     },
     memoryGlow: {
       position: "absolute",
-      inset: "auto auto -18% 62%",
-      width: 160,
-      height: 160,
+      inset: "auto auto -10% 80%",
+      width: 150,
+      height: 150,
       borderRadius: 999,
-      background: "radial-gradient(circle, rgba(177,97,255,0.20), rgba(177,97,255,0))",
-      filter: "blur(8px)",
+      background: "radial-gradient(circle, rgba(177,97,255,0.25), transparent)",
+      filter: "blur(20px)",
       pointerEvents: "none",
     },
     moodSection: {
       display: "grid",
-      gap: 8,
+      gap: 10,
+      padding: "0 4px",
     },
     moodHeading: {
       fontSize: 18,
       fontWeight: 900,
       letterSpacing: "-0.04em",
+      color: textMain,
     },
     moodSub: {
       fontSize: 13,
-      color: "rgba(16,24,38,0.56)",
+      color: textMuted,
       lineHeight: 1.5,
     },
     moodRow: {
       display: "grid",
       gridTemplateColumns: mobile ? "repeat(2, minmax(0, 1fr))" : "repeat(4, minmax(0, 1fr))",
-      gap: 10,
+      gap: 12,
     },
     moodButton: {
       position: "relative",
-      border: "1px solid rgba(16,24,38,0.06)",
+      border: panelBorder,
       borderRadius: 20,
-      padding: "14px 12px",
-      background: "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.66))",
-      color: "#101826",
+      padding: "16px 12px",
+      background: "rgba(30, 32, 44, 0.4)",
+      color: textMuted,
       display: "grid",
-      gap: 4,
+      gap: 6,
       justifyItems: "center",
-      boxShadow: "0 14px 30px rgba(16,24,38,0.05)",
+      boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
       overflow: "hidden",
       cursor: "pointer",
+      backdropFilter: "blur(12px)",
+      transition: "all 0.2s ease",
     },
     moodButtonActive: {
       position: "relative",
-      border: "1px solid rgba(255,255,255,0.10)",
+      border: `1px solid ${accent}`,
       borderRadius: 20,
-      padding: "14px 12px",
-      background: "linear-gradient(180deg, rgba(24,28,46,0.98), rgba(14,18,31,0.98))",
-      color: "#fff",
+      padding: "16px 12px",
+      background: "rgba(20, 22, 30, 0.8)",
+      color: textMain,
       display: "grid",
-      gap: 4,
+      gap: 6,
       justifyItems: "center",
-      boxShadow: `0 0 0 1px ${accent}33 inset, 0 18px 42px rgba(16,24,38,0.18), 0 0 22px ${accent}66`,
+      boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.05), 0 12px 32px rgba(0,0,0,0.3), 0 0 20px ${accent}40`,
       overflow: "hidden",
       cursor: "pointer",
+      backdropFilter: "blur(12px)",
     },
     moodIcon: {
-      fontSize: 18,
+      fontSize: 22,
       lineHeight: 1,
+      color: active => active ? accent : textMuted,
     },
     moodLabel: {
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: 900,
       letterSpacing: "-0.02em",
     },
     moodLabelSub: {
       fontSize: 11,
-      opacity: 0.74,
+      opacity: 0.7,
     },
     moodGlow: {
       position: "absolute",
       inset: "auto -20% -30% auto",
-      width: 90,
-      height: 90,
+      width: 100,
+      height: 100,
       borderRadius: 999,
-      background: `radial-gradient(circle, ${accent}50, ${accent}00)`,
-      filter: "blur(4px)",
+      background: `radial-gradient(circle, ${accent}60, transparent)`,
+      filter: "blur(15px)",
       pointerEvents: "none",
     },
     aiPanel: {
       borderRadius: 26,
       padding: 16,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(255,255,255,0.60))",
-      border: "1px solid rgba(16,24,38,0.07)",
-      boxShadow: "0 18px 46px rgba(16,24,38,0.07)",
-      backdropFilter: "blur(18px)",
+      background: panelBg,
+      border: panelBorder,
+      boxShadow: panelShadow,
+      backdropFilter: "blur(32px)",
       display: "grid",
-      gap: 12,
+      gap: 14,
     },
     aiHeader: {
       display: "flex",
@@ -825,28 +843,17 @@ function createStyles(
       flex: "0 0 auto",
     },
     aiTitle: {
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: 900,
       letterSpacing: "-0.03em",
       lineHeight: 1.15,
+      color: textMain,
     },
     aiSub: {
       marginTop: 2,
-      fontSize: 12,
-      color: "rgba(16,24,38,0.58)",
+      fontSize: 13,
+      color: textMuted,
       lineHeight: 1.4,
-    },
-    aiPill: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: 8,
-      padding: "8px 12px",
-      borderRadius: 999,
-      background: "rgba(16,24,38,0.05)",
-      border: "1px solid rgba(16,24,38,0.06)",
-      fontSize: 12,
-      fontWeight: 800,
-      color: "rgba(16,24,38,0.72)",
     },
     aiChips: {
       display: "flex",
@@ -857,34 +864,34 @@ function createStyles(
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "7px 10px",
+      padding: "7px 12px",
       borderRadius: 999,
-      background: "rgba(255,255,255,0.72)",
-      border: "1px solid rgba(16,24,38,0.06)",
+      background: "rgba(0,0,0,0.3)",
+      border: "1px solid rgba(255,255,255,0.06)",
       fontSize: 12,
-      color: "rgba(16,24,38,0.74)",
+      color: "rgba(255,255,255,0.8)",
       fontWeight: 700,
     },
     threadCard: {
       display: "flex",
       flexDirection: "column",
       borderRadius: 34,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.60))",
-      border: "1px solid rgba(16,24,38,0.08)",
-      boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
+      background: "linear-gradient(180deg, rgba(20, 22, 32, 0.7), rgba(15, 17, 24, 0.8))",
+      border: panelBorder,
+      boxShadow: "0 32px 80px rgba(0,0,0,0.5)",
       overflow: "hidden",
-      backdropFilter: "blur(22px)",
-      minHeight: mobile ? 360 : 520,
+      backdropFilter: "blur(40px)",
+      minHeight: mobile ? 400 : 560,
       position: "relative",
     },
     threadGlow: {
       position: "absolute",
-      inset: "-30% auto auto -12%",
-      width: 220,
-      height: 220,
+      inset: "-20% auto auto -20%",
+      width: 300,
+      height: 300,
       borderRadius: 999,
-      background: "radial-gradient(circle, rgba(255,255,255,0.40), rgba(255,255,255,0))",
-      filter: "blur(12px)",
+      background: "radial-gradient(circle, rgba(255,255,255,0.05), transparent)",
+      filter: "blur(20px)",
       pointerEvents: "none",
       zIndex: 0,
     },
@@ -894,8 +901,8 @@ function createStyles(
       justifyContent: "space-between",
       gap: 12,
       padding: 16,
-      borderBottom: "1px solid rgba(16,24,38,0.06)",
-      background: "rgba(255,255,255,0.38)",
+      borderBottom: "1px solid rgba(255,255,255,0.05)",
+      background: "rgba(255,255,255,0.02)",
       backdropFilter: "blur(14px)",
       position: "relative",
       zIndex: 1,
@@ -906,16 +913,17 @@ function createStyles(
       gap: 12,
     },
     avatar: {
-      width: 42,
-      height: 42,
+      width: 44,
+      height: 44,
       borderRadius: 16,
-      background: "linear-gradient(135deg, #101826, #26364f)",
-      color: "#f5efe6",
+      background: "linear-gradient(135deg, #2a2d3e, #141620)",
+      color: textMain,
       display: "grid",
       placeItems: "center",
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: 900,
-      boxShadow: "0 12px 24px rgba(16,24,38,0.16)",
+      boxShadow: "0 8px 16px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)",
+      border: "1px solid rgba(255,255,255,0.05)",
     },
     threadText: {
       display: "flex",
@@ -926,10 +934,11 @@ function createStyles(
       fontSize: 16,
       fontWeight: 900,
       letterSpacing: "-0.03em",
+      color: textMain,
     },
     threadMeta: {
       fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
+      color: textMuted,
     },
     liveChip: {
       display: "inline-flex",
@@ -937,32 +946,32 @@ function createStyles(
       gap: 8,
       padding: "8px 12px",
       borderRadius: 999,
-      background: "rgba(16,24,38,0.05)",
-      border: "1px solid rgba(16,24,38,0.06)",
+      background: "rgba(0,0,0,0.2)",
+      border: "1px solid rgba(255,255,255,0.05)",
       fontSize: 12,
-      color: "rgba(16,24,38,0.7)",
-      boxShadow: "0 10px 26px rgba(16,24,38,0.04)",
+      color: "rgba(255,255,255,0.8)",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
     },
     liveDot: {
       width: 8,
       height: 8,
       borderRadius: 999,
-      background: isPro ? "#4caf7a" : "#8d6b3d",
-      boxShadow: isPro ? "0 0 0 5px rgba(76,175,122,0.16)" : "0 0 0 5px rgba(141,107,61,0.14)",
+      background: isPro ? "#4caf7a" : "#ff9e5e",
+      boxShadow: isPro ? "0 0 0 4px rgba(76,175,122,0.2)" : "0 0 0 4px rgba(255,158,94,0.2)",
     },
     threadBody: {
       flex: "1 1 auto",
       minHeight: 0,
       display: "flex",
       flexDirection: "column",
-      padding: mobile ? 12 : 16,
+      padding: mobile ? 14 : 20,
       position: "relative",
       zIndex: 1,
     },
     stream: {
       display: "flex",
       flexDirection: "column",
-      gap: 12,
+      gap: 16,
       paddingBottom: 4,
     },
     messageRow: {
@@ -970,14 +979,12 @@ function createStyles(
       width: "100%",
       animation: "floatIn 220ms ease both",
     },
-    meRow: { justifyContent: "flex-end" },
-    futureMeRow: { justifyContent: "flex-start" },
     messageBubble: {
-      maxWidth: mobile ? "90%" : "72%",
+      maxWidth: mobile ? "90%" : "75%",
       minWidth: 0,
-      padding: mobile ? "12px 13px" : "12px 14px",
-      borderRadius: 26,
-      fontSize: mobile ? 13 : 14,
+      padding: "14px 16px",
+      borderRadius: 24,
+      fontSize: mobile ? 14 : 15,
       lineHeight: 1.5,
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
@@ -985,26 +992,27 @@ function createStyles(
       letterSpacing: "-0.005em",
       position: "relative",
       boxSizing: "border-box",
-      boxShadow: "0 14px 30px rgba(16,24,38,0.06)",
-      backdropFilter: "blur(10px)",
+      backdropFilter: "blur(20px)",
     },
     meBubble: {
-      background: "linear-gradient(135deg, #111827, #1f2940)",
-      color: "#f5efe6",
-      boxShadow: "0 16px 34px rgba(16,24,38,0.18)",
-      borderTopLeftRadius: 26,
-      borderTopRightRadius: 26,
-      borderBottomLeftRadius: 26,
-      borderBottomRightRadius: 16,
+      background: "rgba(40, 44, 60, 0.7)", // Tumma omat viestit
+      color: textMain,
+      boxShadow: "0 12px 24px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05)",
+      border: "1px solid rgba(255,255,255,0.05)",
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderBottomLeftRadius: 24,
+      borderBottomRightRadius: 8,
     },
     futureMeBubble: {
-      background: "rgba(255,255,255,0.76)",
-      color: "#101826",
-      border: "1px solid rgba(16,24,38,0.06)",
-      borderTopLeftRadius: 26,
-      borderTopRightRadius: 26,
-      borderBottomLeftRadius: 16,
-      borderBottomRightRadius: 26,
+      background: "rgba(255, 255, 255, 0.1)", // Vaaleampi AI viestit
+      color: textMain,
+      border: "1px solid rgba(255,255,255,0.1)",
+      boxShadow: "0 12px 24px rgba(0,0,0,0.2)",
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderBottomLeftRadius: 8,
+      borderBottomRightRadius: 24,
     },
     messageTop: {
       display: "flex",
@@ -1022,34 +1030,36 @@ function createStyles(
       fontSize: 11,
       fontWeight: 900,
       letterSpacing: "0.02em",
-      background: "rgba(16,24,38,0.06)",
-      color: "rgba(16,24,38,0.72)",
+      background: "rgba(255,255,255,0.1)",
+      color: "rgba(255,255,255,0.9)",
     },
     messageRoleMe: {
-      background: "rgba(255,255,255,0.10)",
-      color: "#f5efe6",
+      background: "rgba(0,0,0,0.3)",
+      color: textMuted,
     },
     copyButton: {
-      border: "1px solid rgba(16,24,38,0.08)",
+      border: "1px solid rgba(255,255,255,0.1)",
       borderRadius: 999,
-      padding: "6px 10px",
-      background: "rgba(255,255,255,0.74)",
-      color: "#101826",
+      padding: "6px 12px",
+      background: "rgba(255,255,255,0.05)",
+      color: textMain,
       fontSize: 11,
       fontWeight: 800,
-      boxShadow: "0 8px 18px rgba(16,24,38,0.04)",
       cursor: "pointer",
+      transition: "background 0.2s ease",
     },
     messageText: {
-      fontSize: mobile ? 13 : 14,
+      fontSize: mobile ? 14 : 15,
       lineHeight: 1.6,
       whiteSpace: "pre-wrap",
       overflowWrap: "anywhere",
+      color: "rgba(255,255,255,0.9)",
     },
     timestamp: {
-      marginTop: 8,
+      marginTop: 10,
       fontSize: 11,
-      color: "rgba(16,24,38,0.52)",
+      color: textMuted,
+      textAlign: "right",
     },
     typingRow: {
       display: "flex",
@@ -1057,12 +1067,12 @@ function createStyles(
       animation: "floatIn 180ms ease both",
     },
     typingBubble: {
-      padding: "12px 14px",
-      borderRadius: 26,
-      background: "rgba(16,24,38,0.05)",
-      color: "rgba(16,24,38,0.58)",
+      padding: "14px 16px",
+      borderRadius: 24,
+      background: "rgba(255,255,255,0.05)",
+      color: textMuted,
       fontSize: 14,
-      letterSpacing: "0.02em",
+      border: "1px solid rgba(255,255,255,0.05)",
       animation: "pulse 1.3s ease-in-out infinite",
     },
     typingDots: {
@@ -1081,10 +1091,10 @@ function createStyles(
     composerShell: {
       flex: "0 0 auto",
       borderRadius: 26,
-      background: "linear-gradient(180deg, rgba(255,255,255,0.80), rgba(255,255,255,0.58))",
-      border: "1px solid rgba(16,24,38,0.08)",
-      boxShadow: "0 26px 70px rgba(16,24,38,0.10)",
-      backdropFilter: "blur(22px)",
+      background: "rgba(20, 22, 32, 0.6)",
+      border: panelBorder,
+      boxShadow: "0 -10px 40px rgba(0,0,0,0.3)",
+      backdropFilter: "blur(40px)",
       overflow: "hidden",
     },
     composerTop: {
@@ -1092,25 +1102,25 @@ function createStyles(
       justifyContent: "space-between",
       gap: 10,
       flexWrap: "wrap",
-      padding: "14px 14px 0",
+      padding: "14px 16px 0",
     },
     composerChip: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "7px 10px",
+      padding: "7px 12px",
       borderRadius: 999,
-      background: "rgba(16,24,38,0.05)",
-      color: "rgba(16,24,38,0.7)",
-      border: "1px solid rgba(16,24,38,0.06)",
+      background: "rgba(0,0,0,0.2)",
+      color: textMuted,
+      border: "1px solid rgba(255,255,255,0.05)",
       fontSize: 12,
       fontWeight: 800,
     },
     composerRow: {
       display: "flex",
-      gap: 8,
+      gap: 10,
       alignItems: "flex-end",
-      padding: 12,
+      padding: 14,
       flexDirection: mobile ? "column" : "row",
     },
     composerTextarea: {
@@ -1120,39 +1130,41 @@ function createStyles(
       maxHeight: 140,
       resize: "none",
       borderRadius: 20,
-      border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.92)",
-      color: "#101826",
-      padding: "13px 13px",
+      border: "1px solid rgba(255,255,255,0.1)",
+      background: "rgba(0,0,0,0.2)",
+      color: textMain,
+      padding: "14px 16px",
       lineHeight: 1.45,
-      fontSize: 14,
+      fontSize: 15,
       outline: "none",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
-      transition: "border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease",
+      boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)",
+      transition: "border-color 160ms ease",
     },
     sendButton: {
-      minWidth: mobile ? "100%" : 102,
+      minWidth: mobile ? "100%" : 110,
       border: 0,
       borderRadius: 20,
-      padding: "12px 16px",
+      padding: "14px 20px",
       background: `linear-gradient(180deg, ${accent}, ${accent}CC)`,
       color: "#ffffff",
       fontWeight: 900,
-      boxShadow: `0 16px 32px ${accent}44, 0 0 26px ${accent}44`,
-      transition: "transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease",
+      fontSize: 15,
+      boxShadow: `0 8px 20px ${accent}40, inset 0 1px 0 rgba(255,255,255,0.3)`,
+      transition: "transform 160ms ease, box-shadow 160ms ease",
       cursor: "pointer",
     },
     helper: {
       padding: "0 16px 16px",
       fontSize: 12,
-      color: "rgba(16,24,38,0.54)",
+      color: textMuted,
       lineHeight: 1.5,
+      textAlign: "center",
     },
     sheetBackdrop: {
       position: "fixed",
       inset: 0,
-      background: "rgba(15,23,38,0.24)",
-      backdropFilter: "blur(4px)",
+      background: "rgba(0, 0, 0, 0.6)",
+      backdropFilter: "blur(8px)",
       zIndex: 40,
     },
     sheet: {
@@ -1161,48 +1173,49 @@ function createStyles(
       right: 0,
       bottom: 0,
       zIndex: 50,
-      background: "rgba(255,255,255,0.96)",
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      borderTop: "1px solid rgba(16,24,38,0.08)",
-      padding: 16,
-      boxShadow: "0 -18px 50px rgba(16,24,38,0.16)",
+      background: "rgba(20, 22, 32, 0.95)",
+      borderTopLeftRadius: 32,
+      borderTopRightRadius: 32,
+      borderTop: panelBorder,
+      padding: 24,
+      boxShadow: "0 -24px 80px rgba(0,0,0,0.5)",
       display: "grid",
-      gap: 12,
-      backdropFilter: "blur(18px)",
+      gap: 16,
+      backdropFilter: "blur(40px)",
+      color: textMain,
     },
     sheetTitle: {
-      fontSize: 18,
+      fontSize: 22,
       fontWeight: 900,
       letterSpacing: "-0.03em",
     },
     sheetSub: {
-      marginTop: 3,
-      fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
+      marginTop: 4,
+      fontSize: 14,
+      color: textMuted,
       lineHeight: 1.5,
     },
     sheetGroup: {
       display: "grid",
-      gap: 8,
+      gap: 10,
     },
     sheetButton: {
       width: "100%",
       textAlign: "left",
       borderRadius: 16,
-      padding: "12px 14px",
-      border: "1px solid rgba(16,24,38,0.08)",
-      background: "rgba(255,255,255,0.88)",
-      color: "#101826",
+      padding: "16px",
+      border: "1px solid rgba(255,255,255,0.05)",
+      background: "rgba(255,255,255,0.03)",
+      color: textMain,
       fontWeight: 800,
-      boxShadow: "0 10px 24px rgba(16,24,38,0.04)",
+      fontSize: 15,
       cursor: "pointer",
     },
     paywallBackdrop: {
       position: "fixed",
       inset: 0,
-      background: "rgba(15,23,38,0.28)",
-      backdropFilter: "blur(8px)",
+      background: "rgba(0, 0, 0, 0.7)",
+      backdropFilter: "blur(12px)",
       zIndex: 60,
     },
     paywall: {
@@ -1211,134 +1224,145 @@ function createStyles(
       right: 0,
       bottom: 0,
       zIndex: 70,
-      background: "rgba(255,255,255,0.98)",
-      borderTopLeftRadius: 28,
-      borderTopRightRadius: 28,
-      borderTop: "1px solid rgba(16,24,38,0.08)",
-      padding: 16,
-      boxShadow: "0 -18px 60px rgba(16,24,38,0.18)",
+      background: "rgba(20, 22, 32, 0.98)",
+      borderTopLeftRadius: 32,
+      borderTopRightRadius: 32,
+      borderTop: "1px solid rgba(255, 170, 0, 0.3)",
+      padding: 24,
+      boxShadow: "0 -24px 100px rgba(0,0,0,0.6)",
       display: "grid",
-      gap: 12,
-      backdropFilter: "blur(18px)",
+      gap: 16,
+      backdropFilter: "blur(40px)",
+      color: textMain,
     },
     paywallHeader: {
       display: "grid",
-      gap: 4,
+      gap: 6,
     },
     paywallTitle: {
-      fontSize: 20,
+      fontSize: 24,
       fontWeight: 950,
       letterSpacing: "-0.04em",
+      background: "linear-gradient(90deg, #ffca66, #ff9e5e)",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
     },
     paywallSub: {
-      fontSize: 13,
+      fontSize: 14,
       lineHeight: 1.5,
-      color: "rgba(16,24,38,0.62)",
+      color: "rgba(255,255,255,0.8)",
     },
     featureCard: {
       borderRadius: 20,
-      padding: 14,
-      background: "rgba(16,24,38,0.04)",
-      border: "1px solid rgba(16,24,38,0.06)",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.55)",
+      padding: 16,
+      background: "rgba(0,0,0,0.3)",
+      border: "1px solid rgba(255,255,255,0.05)",
     },
     featureList: {
       display: "grid",
-      gap: 8,
-      marginTop: 4,
+      gap: 12,
+      marginTop: 8,
     },
     featureItem: {
       display: "flex",
       alignItems: "flex-start",
-      gap: 10,
+      gap: 12,
       fontSize: 14,
       lineHeight: 1.5,
-      color: "#101826",
+      color: textMain,
     },
     featureDot: {
       width: 8,
       height: 8,
       marginTop: 6,
       borderRadius: 999,
-      background: "#101826",
+      background: "#ffca66",
       flex: "0 0 auto",
+      boxShadow: "0 0 10px rgba(255, 202, 102, 0.5)",
     },
     paywallButtons: {
       display: "flex",
-      gap: 10,
+      gap: 12,
       flexWrap: "wrap",
     },
     proButton: {
       border: 0,
       borderRadius: 16,
-      padding: "12px 16px",
-      background: "#101826",
-      color: "#f5efe6",
+      padding: "16px",
+      background: "linear-gradient(180deg, #ffca66, #ff9e5e)",
+      color: "#141005",
       fontWeight: 900,
-      boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+      fontSize: 15,
+      boxShadow: "0 12px 24px rgba(255, 158, 94, 0.3)",
       cursor: "pointer",
+      flex: 1,
+      minWidth: "100%",
     },
     ghostButton: {
-      border: "1px solid rgba(16,24,38,0.08)",
+      border: "1px solid rgba(255,255,255,0.1)",
       borderRadius: 16,
-      padding: "12px 16px",
-      background: "rgba(255,255,255,0.88)",
-      color: "#101826",
+      padding: "14px 16px",
+      background: "rgba(255,255,255,0.05)",
+      color: textMain,
       fontWeight: 800,
-      boxShadow: "0 12px 24px rgba(16,24,38,0.05)",
       cursor: "pointer",
+      flex: 1,
+      minWidth: "calc(50% - 6px)",
     },
     hintLine: {
       fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
+      color: textMuted,
       lineHeight: 1.5,
+      textAlign: "center",
+      marginTop: 8,
     },
     freeTag: {
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
-      padding: "8px 12px",
+      padding: "8px 14px",
       borderRadius: 999,
-      background: isPro ? "rgba(76,175,122,0.12)" : "rgba(141,107,61,0.10)",
-      color: isPro ? "#206f47" : "#7c5a2f",
-      border: "1px solid rgba(16,24,38,0.06)",
-      fontSize: 12,
+      background: isPro ? "rgba(76,175,122,0.2)" : "rgba(255,255,255,0.1)",
+      color: isPro ? "#4caf7a" : textMain,
+      border: isPro ? "1px solid rgba(76,175,122,0.3)" : "1px solid rgba(255,255,255,0.1)",
+      fontSize: 13,
       fontWeight: 800,
       width: "fit-content",
-      boxShadow: "0 10px 26px rgba(16,24,38,0.04)",
     },
     sheetInput: {
       borderRadius: 16,
-      border: "1px solid rgba(16,24,38,0.08)",
-      padding: "12px 14px",
-      background: "rgba(255,255,255,0.92)",
-      fontSize: 15,
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.7)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      padding: "16px",
+      background: "rgba(0,0,0,0.3)",
+      color: textMain,
+      fontSize: 16,
+      outline: "none",
     },
     sheetPrimary: {
       border: 0,
       borderRadius: 16,
-      padding: "12px 16px",
-      background: "#101826",
-      color: "#f5efe6",
+      padding: "16px",
+      background: textMain,
+      color: "#08080c",
       fontWeight: 900,
-      boxShadow: "0 16px 32px rgba(16,24,38,0.16)",
+      fontSize: 15,
       cursor: "pointer",
     },
     sheetSecondary: {
-      border: "1px solid rgba(16,24,38,0.08)",
+      border: "1px solid rgba(255,255,255,0.1)",
       borderRadius: 16,
-      padding: "12px 16px",
-      background: "rgba(255,255,255,0.88)",
-      color: "#101826",
+      padding: "16px",
+      background: "rgba(255,255,255,0.05)",
+      color: textMain,
       fontWeight: 800,
-      boxShadow: "0 12px 24px rgba(16,24,38,0.05)",
+      fontSize: 15,
       cursor: "pointer",
     },
     sheetHint: {
-      fontSize: 12,
-      color: "rgba(16,24,38,0.56)",
+      fontSize: 13,
+      color: textMuted,
       lineHeight: 1.5,
+      textAlign: "center",
     },
   };
 }
@@ -1367,11 +1391,12 @@ export default function Page() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  // Uudet kirkkaammat korostusvärit tummaan teemaan
   const accentMap: Record<Mood, string> = {
-    calm: "#5b8def",
-    honest: "#f3a85f",
-    direct: "#3bc6a1",
-    wise: "#8f67f2",
+    calm: "#60a5fa",   // Kirkas sininen
+    honest: "#fb923c", // Lämmin oranssi
+    direct: "#34d399", // Neon vihreä
+    wise: "#a78bfa",   // Hehkuva violetti
   };
   const accent = accentMap[mood];
 
@@ -1383,13 +1408,6 @@ export default function Page() {
   const hasConversationStarted = messages.some((m) => m.id !== "welcome");
   const visibleMessageCount = Math.max(0, messages.filter((m) => m.id !== "welcome").length);
   const liveLabel = loading ? "responding..." : hasConversationStarted ? "online" : "ready";
-  const liveSub = loading
-    ? "reframing your thought"
-    : hasConversationStarted
-      ? memorySummary
-        ? "memory connected"
-        : "holding context"
-      : "waiting for the first thought";
   const composerPlaceholder = moodPlaceholders[mood];
   const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud sync on" : "private draft";
 
@@ -1413,7 +1431,6 @@ export default function Page() {
     return () => window.clearInterval(timer);
   }, []);
 
-  // Hydrate local state
   useEffect(() => {
     try {
       const draft = loadDraft(STORAGE_KEY);
@@ -1449,7 +1466,6 @@ export default function Page() {
     }
   }, [memoryKey]);
 
-  // Debounced Save Draft - Performance improvement
   useEffect(() => {
     if (!hydrated) return;
     
@@ -1508,7 +1524,6 @@ export default function Page() {
     });
 
     return () => authListener.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const styles = useMemo(
@@ -1644,7 +1659,6 @@ export default function Page() {
     setMessages(nextMessages);
     setInput("");
     
-    // Reset textarea height after sending
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -1795,7 +1809,7 @@ export default function Page() {
     <main style={styles.page}>
       <style jsx global>{`
         :root {
-          color-scheme: light;
+          color-scheme: dark;
         }
 
         * {
@@ -1808,12 +1822,8 @@ export default function Page() {
           width: 100%;
           min-height: 100%;
           height: auto;
-          background:
-            radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 30%),
-            radial-gradient(circle at 20% 20%, rgba(155, 120, 255, 0.16), transparent 28%),
-            radial-gradient(circle at 85% 18%, rgba(255, 194, 117, 0.14), transparent 24%),
-            linear-gradient(180deg, #f6f0e8 0%, #ebe4d8 100%);
-          color: #101826;
+          background-color: #08080c;
+          color: #ffffff;
           font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
@@ -1836,8 +1846,8 @@ export default function Page() {
         }
 
         ::selection {
-          background: rgba(16, 24, 38, 0.14);
-          color: #101826;
+          background: rgba(255, 255, 255, 0.2);
+          color: #ffffff;
         }
 
         @keyframes floatIn {
@@ -1854,14 +1864,15 @@ export default function Page() {
         @keyframes pulse {
           0%,
           100% {
-            opacity: 0.45;
+            opacity: 0.3;
           }
           50% {
-            opacity: 1;
+            opacity: 0.8;
           }
         }
       `}</style>
 
+      {/* Hehkuvat taustaelementit */}
       <div style={styles.glowA} />
       <div style={styles.glowB} />
 
@@ -2021,7 +2032,7 @@ export default function Page() {
 
             <div style={styles.heroTitle}>
               Your future self, <br />
-              but <span style={{ color: accent }}>sharper.</span>
+              but <span style={{ color: accent, textShadow: `0 0 20px ${accent}60` }}>sharper.</span>
             </div>
 
             <div style={styles.heroSub}>
@@ -2077,10 +2088,11 @@ export default function Page() {
           <span style={styles.pill}>
             <span
               style={{
-                width: 7,
-                height: 7,
+                width: 8,
+                height: 8,
                 borderRadius: 999,
-                background: isPro ? "#4caf7a" : "#8d6b3d",
+                background: isPro ? "#4caf7a" : "#ff9e5e",
+                boxShadow: `0 0 8px ${isPro ? "#4caf7a" : "#ff9e5e"}`,
               }}
             />
             {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
