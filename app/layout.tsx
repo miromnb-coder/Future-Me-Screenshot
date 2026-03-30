@@ -1,4 +1,4 @@
-import "./globals.css";
+import "./globals.css"; // Tärkeää: pieni i-kirjain
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
@@ -10,7 +10,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#101826"
+  themeColor: "#050508" // Päivitetty vastaamaan uutta tummaa teemaa
 };
 
 export default function RootLayout({
@@ -20,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }
