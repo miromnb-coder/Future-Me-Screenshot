@@ -1,5 +1,6 @@
-import "./globals.css"; // Tärkeää: pieni i-kirjain
+import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import ThemeSwitcher from "../components/ThemeSwitcher";
 
 export const metadata: Metadata = {
   title: "Future Me",
@@ -10,7 +11,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#050508" // Päivitetty vastaamaan uutta tummaa teemaa
+  themeColor: "#050508"
 };
 
 export default function RootLayout({
@@ -20,7 +21,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <ThemeSwitcher />
+        {children}
+      </body>
     </html>
   );
 }

@@ -1,10 +1,13 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #050508;
+  --background: #09090d;
   --foreground: #ffffff;
+  --primary: #34d399; /* A vibrant green as a default accent */
+  --accent: var(--primary);
 }
 
 * {
@@ -19,62 +22,17 @@ body {
   margin: 0;
   width: 100%;
   min-height: 100vh;
-  /* Syvä musta tausta, jotta lasiefektit erottuvat */
   background: var(--background);
   color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   overflow-x: hidden;
   scroll-behavior: smooth;
 }
 
-body {
-  margin: 0;
+.animation-delay-100 {
+  animation-delay: 100ms;
 }
 
-/* Lomake-elementtien nollaus */
-button,
-textarea,
-input {
-  font: inherit;
-  background: transparent;
-  color: inherit;
-  border: none;
-}
-
-button {
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-textarea {
-  outline: none;
-  resize: none;
-}
-
-/* Tyylikäs valinta-alue (Selection) */
-::selection {
-  background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
-}
-
-/* Apu-luokka scrollbarin piilottamiseen (käytetään chatissa) */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* Lisätään hienovarainen syvyysefekti koko sivulle */
-body::before {
-  content: "";
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle at 50% 50%, rgba(20, 20, 25, 0) 0%, rgba(5, 5, 8, 0.5) 100%);
-  pointer-events: none;
-  z-index: 1;
+.animation-delay-200 {
+  animation-delay: 200ms;
 }
