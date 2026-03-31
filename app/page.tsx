@@ -55,6 +55,14 @@ type InsightData = {
   totalUserMessages: number;
   avgLength: number;
   dominantTone: string;
+  moodTrend: Record<Mood, number[]>;
+};
+
+type ContextMenuData = {
+  messageId: string;
+  text: string;
+  x: number;
+  y: number;
 };
 
 const STORAGE_KEY = "future-me-draft";
@@ -445,12 +453,22 @@ function buildInsights(messages: Message[]): InsightData {
   const dominantTone =
     toneScore > 3 ? "tense" : toneScore < -2 ? "confident" : "balanced";
 
+  // Mocked trend data based on deterministic lengths
+  const seed = userMessages.length;
+  const moodTrend = {
+    calm: [2, 3, 1, 4, 2, 5, 3].map(v => v + (seed % 2)),
+    honest: [4, 1, 3, 2, 5, 1, 2].map(v => v + (seed % 3)),
+    direct: [1, 2, 4, 3, 1, 2, 5].map(v => v + (seed % 2)),
+    wise: [3, 4, 2, 1, 3, 4, 1].map(v => v + (seed % 3)),
+  };
+
   return {
     topThemes: searchThemes(messages),
     weeklyActivity,
     totalUserMessages: userMessages.length,
     avgLength,
     dominantTone,
+    moodTrend,
   };
 }
 
@@ -1156,7 +1174,7 @@ function createStyles(
       overflow: "hidden",
       backdropFilter: "blur(40px) saturate(150%)",
       minHeight: mobile ? 400 : 560,
-      maxHeight: 600, // Lisätty rajoittamaan chatin pituutta
+      maxHeight: 600,
       position: "relative",
       transition:
         "background 420ms ease, box-shadow 420ms ease, border-color 420ms ease, color 420ms ease, transform 420ms ease",
@@ -1244,7 +1262,7 @@ function createStyles(
       padding: mobile ? 14 : 20,
       position: "relative",
       zIndex: 1,
-      overflowY: "auto", // TÄMÄ MAHDOLLISTAA RULLAUKSEN
+      overflowY: "auto",
     },
     stream: {
       display: "flex",
@@ -1270,6 +1288,8 @@ function createStyles(
       position: "relative",
       boxSizing: "border-box",
       backdropFilter: "blur(20px)",
+      userSelect: "none",
+      WebkitUserSelect: "none",
     },
     meBubble: {
       background: "rgba(40,44,60,0.75)",
@@ -1370,6 +1390,7 @@ function createStyles(
       boxShadow: "0 -10px 40px rgba(0,0,0,0.3)",
       backdropFilter: "blur(40px) saturate(150%)",
       overflow: "hidden",
+      position: "relative",
       transition:
         "background 420ms ease, box-shadow 420ms ease, border-color 420ms ease, color 420ms ease, transform 420ms ease",
     },
@@ -1442,6 +1463,17 @@ function createStyles(
       fontSize: 15,
       boxShadow: "0 8px 20px rgba(0,0,0,0.18)",
       cursor: "pointer",
+    },
+    focusModeToggleBtn: {
+      position: "absolute",
+      right: 18,
+      top: 18,
+      background: "transparent",
+      border: "none",
+      color: textMuted,
+      cursor: "pointer",
+      fontSize: 18,
+      zIndex: 2,
     },
     helper: {
       padding: "0 16px 16px",
@@ -1733,44 +1765,28 @@ function createStyles(
       color: textMuted,
       marginTop: 4,
     },
-    themeList: {
-      display: "grid",
-      gap: 10,
-      marginTop: 14,
+    themeBubbleContainer: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 12,
+      justifyContent: "center",
+      alignItems: "center",
+      marginTop: 20,
+      padding: "10px 0"
     },
-    themeItem: {
+    themeBubble: {
+      borderRadius: "50%",
       display: "flex",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-      padding: "10px 12px",
-      borderRadius: 16,
-      background: "rgba(0,0,0,0.22)",
-      border: "1px solid rgba(255,255,255,0.06)",
-    },
-    themeBar: {
-      height: 8,
-      borderRadius: 999,
-      background: "rgba(255,255,255,0.08)",
-      overflow: "hidden",
-      flex: 1,
-      marginLeft: 12,
-      marginRight: 12,
-    },
-    themeBarFill: {
-      height: "100%",
-      borderRadius: 999,
-      background: `linear-gradient(90deg, ${accent}, ${hexToRgba(accent, 0.45)})`,
-    },
-    themeLabel: {
-      fontSize: 13,
+      justifyContent: "center",
+      background: `linear-gradient(135deg, ${accent}, ${hexToRgba(accent, 0.6)})`,
+      color: "#fff",
       fontWeight: 800,
-    },
-    themeCount: {
       fontSize: 12,
-      color: textMuted,
-      minWidth: 24,
-      textAlign: "right",
+      boxShadow: `0 8px 24px ${hexToRgba(accent, 0.3)}`,
+      textAlign: "center",
+      border: "1px solid rgba(255,255,255,0.15)",
+      transition: "transform 0.2s ease"
     },
     voiceHint: {
       fontSize: 12,
@@ -1793,6 +1809,104 @@ function createStyles(
       fontSize: 12,
       fontWeight: 700,
     },
+    scrollBottomBtn: {
+      position: "absolute",
+      bottom: 24,
+      right: 24,
+      width: 44,
+      height: 44,
+      borderRadius: "50%",
+      background: glassBg,
+      border: panelBorder,
+      color: textMain,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+      backdropFilter: "blur(20px)",
+      cursor: "pointer",
+      zIndex: 10,
+      fontSize: 18,
+    },
+    focusModeOverlay: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 9999,
+      background: "rgba(9, 9, 13, 0.98)",
+      backdropFilter: "blur(20px)",
+      display: "flex",
+      flexDirection: "column",
+      padding: mobile ? 20 : 40,
+    },
+    focusModeHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 20,
+    },
+    focusModeTitle: {
+      fontSize: 20,
+      fontWeight: 800,
+      color: textMuted,
+      letterSpacing: "0.05em",
+      textTransform: "uppercase",
+    },
+    focusModeClose: {
+      background: "rgba(255,255,255,0.05)",
+      border: panelBorder,
+      color: textMain,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+    },
+    focusModeTextarea: {
+      flex: 1,
+      width: "100%",
+      background: "transparent",
+      border: "none",
+      color: textMain,
+      fontSize: mobile ? 22 : 32,
+      lineHeight: 1.4,
+      outline: "none",
+      resize: "none",
+    },
+    focusModeFooter: {
+      marginTop: 20,
+      display: "flex",
+      justifyContent: "flex-end",
+    },
+    contextMenu: {
+      position: "absolute",
+      zIndex: 100,
+      background: "rgba(24, 26, 38, 0.95)",
+      backdropFilter: "blur(20px)",
+      border: panelBorder,
+      borderRadius: 16,
+      padding: 8,
+      display: "flex",
+      flexDirection: "column",
+      gap: 4,
+      boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
+      minWidth: 180,
+    },
+    contextMenuBtn: {
+      background: "transparent",
+      border: "none",
+      color: textMain,
+      textAlign: "left",
+      padding: "10px 14px",
+      fontSize: 14,
+      fontWeight: 600,
+      borderRadius: 10,
+      cursor: "pointer",
+    },
+    contextMenuBtnHover: {
+      background: "rgba(255,255,255,0.1)",
+    }
   };
 }
 
@@ -1819,10 +1933,16 @@ export default function Page() {
   const [activeTab, setActiveTab] = useState<ViewTab>("chat");
   const [retrievedMemories, setRetrievedMemories] = useState<string[]>([]);
   const [voiceListening, setVoiceListening] = useState(false);
+  
+  // New States
+  const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
+  const longPressTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const accentMap: Record<Mood, string> = {
     calm: "#60a5fa",
@@ -1925,19 +2045,26 @@ export default function Page() {
     }
   }, [messages, memoryKey, user?.email]);
 
-  // AUTOMAATTINEN RULLAUS POHJAAN
+  // Automaattinen Focus Mode
   useEffect(() => {
-    if (bottomRef.current) {
+    if (input.length > 120 && !isFocusMode && !window.sessionStorage.getItem('dismissedFocus')) {
+      setIsFocusMode(true);
+    }
+  }, [input, isFocusMode]);
+
+  // Scroll to bottom logiikka
+  useEffect(() => {
+    if (!showScrollBottom && bottomRef.current) {
         bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-  }, [messages, loading]);
+  }, [messages, loading, showScrollBottom]);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet ? "hidden" : "auto";
+    document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet || isFocusMode ? "hidden" : "auto";
     return () => {
       document.body.style.overflow = "auto";
     };
-  }, [menuOpen, paywallOpen, showSaveSheet]);
+  }, [menuOpen, paywallOpen, showSaveSheet, isFocusMode]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -1968,6 +2095,32 @@ export default function Page() {
     () => createStyles(mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab),
     [mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab]
   );
+
+  const handleChatScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+    setShowScrollBottom(distanceToBottom > 100);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent | React.MouseEvent, msg: Message) => {
+    let clientX, clientY;
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    
+    longPressTimeout.current = setTimeout(() => {
+      vibrate(15);
+      setContextMenu({ messageId: msg.id, text: msg.text, x: clientX, y: clientY });
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimeout.current) clearTimeout(longPressTimeout.current);
+  };
 
   async function syncSession(nextUser: User | null) {
     setUser(nextUser);
@@ -2077,9 +2230,35 @@ export default function Page() {
       await navigator.clipboard.writeText(text);
       setCopiedId(id);
       window.setTimeout(() => setCopiedId(null), 1200);
+      setContextMenu(null);
     } catch {
       // ignore
     }
+  }
+
+  async function shareMessage(text: string) {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          text: text,
+        });
+      }
+      setContextMenu(null);
+    } catch {
+      // ignore
+    }
+  }
+
+  function deleteMessage(id: string) {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+    setContextMenu(null);
+  }
+
+  function deepenThought(text: string) {
+    setInput(`Deepen this thought: "${text}"\n\n`);
+    setContextMenu(null);
+    setIsFocusMode(true);
+    setTimeout(() => textareaRef.current?.focus(), 0);
   }
 
   async function startVoice() {
@@ -2149,6 +2328,7 @@ export default function Page() {
     }
 
     vibrate([12, 20, 12]);
+    setIsFocusMode(false);
 
     const userMessage: Message = {
       id: uid(),
@@ -2310,8 +2490,10 @@ export default function Page() {
 
   const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+    if (!isFocusMode) {
+      e.target.style.height = "auto";
+      e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+    }
   };
 
   return (
@@ -2388,6 +2570,45 @@ export default function Page() {
       {showSaveSheet && <div style={styles.sheetBackdrop} onClick={() => setShowSaveSheet(false)} />}
       {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
       {paywallOpen && <div style={styles.paywallBackdrop} onClick={() => setPaywallOpen(false)} />}
+      {contextMenu && <div style={{...styles.sheetBackdrop, background: "transparent", zIndex: 90}} onClick={() => setContextMenu(null)} onContextMenu={(e) => {e.preventDefault(); setContextMenu(null)}} />}
+
+      {contextMenu && (
+        <div style={{
+          ...styles.contextMenu,
+          left: Math.min(contextMenu.x, window.innerWidth - 200),
+          top: Math.min(contextMenu.y, window.innerHeight - 200)
+        }}>
+          <button style={styles.contextMenuBtn} onClick={() => copyMessage(contextMenu.text, contextMenu.messageId)}>Copy Text</button>
+          <button style={styles.contextMenuBtn} onClick={() => shareMessage(contextMenu.text)}>Share</button>
+          <button style={styles.contextMenuBtn} onClick={() => deepenThought(contextMenu.text)}>Deepen this thought</button>
+          <button style={{...styles.contextMenuBtn, color: "#ef4444"}} onClick={() => deleteMessage(contextMenu.messageId)}>Delete</button>
+        </div>
+      )}
+
+      {isFocusMode && (
+        <div style={styles.focusModeOverlay}>
+          <div style={styles.focusModeHeader}>
+            <span style={styles.focusModeTitle}>Focus Mode</span>
+            <button style={styles.focusModeClose} onClick={() => {
+              setIsFocusMode(false);
+              window.sessionStorage.setItem('dismissedFocus', 'true');
+            }}>✕</button>
+          </div>
+          <textarea
+            autoFocus
+            style={styles.focusModeTextarea}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Keep writing. No distractions."
+          />
+          <div style={styles.focusModeFooter}>
+            <button style={{...styles.sendButton, minWidth: 150}} onClick={() => void sendMessage()} disabled={loading}>
+              {loading ? "Thinking..." : "Send"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showSaveSheet && (
         <aside style={styles.sheet}>
@@ -2755,7 +2976,7 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div style={styles.threadBody}>
+                <div style={styles.threadBody} onScroll={handleChatScroll}>
                   <div style={styles.stream}>
                     <AnimatePresence initial={false} mode="popLayout">
                       {messages.map((message) => {
@@ -2779,6 +3000,13 @@ export default function Page() {
                             }}
                           >
                             <article
+                              onTouchStart={(e) => handleTouchStart(e, message)}
+                              onTouchEnd={handleTouchEnd}
+                              onTouchMove={handleTouchEnd}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                setContextMenu({ messageId: message.id, text: message.text, x: e.clientX, y: e.clientY });
+                              }}
                               style={{
                                 ...styles.messageBubble,
                                 ...(isUser ? styles.meBubble : styles.futureMeBubble),
@@ -2786,13 +3014,6 @@ export default function Page() {
                             >
                               <div style={styles.messageTop}>
                                 <span style={roleStyle}>{isUser ? "You" : "Future Me"}</span>
-                                <button
-                                  type="button"
-                                  style={styles.copyButton}
-                                  onClick={() => void copyMessage(message.text, message.id)}
-                                >
-                                  {copiedId === message.id ? "Copied" : "Copy"}
-                                </button>
                               </div>
 
                               <div style={styles.messageText}>{message.text}</div>
@@ -2826,9 +3047,28 @@ export default function Page() {
                     <div ref={bottomRef} />
                   </div>
                 </div>
+                
+                {showScrollBottom && (
+                  <button 
+                    style={styles.scrollBottomBtn}
+                    onClick={() => {
+                      setShowScrollBottom(false);
+                      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
+                    ↓
+                  </button>
+                )}
               </InteractiveGlassCard>
 
               <InteractiveGlassCard accent={accent} style={styles.composerShell}>
+                <button 
+                  style={styles.focusModeToggleBtn} 
+                  title="Enter Focus Mode"
+                  onClick={() => setIsFocusMode(true)}
+                >
+                  ⛶
+                </button>
                 <div style={styles.composerTop}>
                   <span style={styles.composerChip}>{moodLabels[mood]} mode</span>
                   <span style={styles.composerChip}>{memoryBadge}</span>
@@ -2954,28 +3194,68 @@ export default function Page() {
               </div>
 
               <InteractiveGlassCard accent={accent} style={styles.insightCard}>
-                <div style={styles.insightTitle}>Recurring themes</div>
+                <div style={styles.insightTitle}>Mood Trend</div>
                 <div style={styles.insightSub}>
-                  These are the topics that appear most often in your messages.
+                  How the AI modes matched your thoughts over the last 7 days.
                 </div>
 
-                <div style={styles.themeList}>
+                <div style={{ position: "relative", height: 160, marginTop: 20, width: "100%" }}>
+                  <svg width="100%" height="100%" viewBox="0 0 700 160" preserveAspectRatio="none">
+                    {(Object.keys(insights.moodTrend) as Mood[]).map((mKey) => {
+                      const data = insights.moodTrend[mKey];
+                      const maxVal = Math.max(1, ...Object.values(insights.moodTrend).flat());
+                      const points = data.map((val, i) => {
+                        const x = (i / 6) * 700;
+                        const y = 160 - (val / maxVal) * 140; 
+                        return `${x},${y}`;
+                      }).join(" L ");
+                      
+                      return (
+                        <path
+                          key={mKey}
+                          d={`M ${points}`}
+                          fill="none"
+                          stroke={accentMap[mKey]}
+                          strokeWidth={mKey === mood ? 4 : 2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          opacity={mKey === mood ? 1 : 0.3}
+                          style={{ transition: "all 0.4s ease" }}
+                        />
+                      );
+                    })}
+                  </svg>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: textMuted }}>
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  </div>
+                </div>
+              </InteractiveGlassCard>
+
+              <InteractiveGlassCard accent={accent} style={styles.insightCard}>
+                <div style={styles.insightTitle}>Recurring themes</div>
+                <div style={styles.insightSub}>
+                  Interactive word cloud based on frequency.
+                </div>
+
+                <div style={styles.themeBubbleContainer}>
                   {(insights.topThemes.length > 0 ? insights.topThemes : [
-                    { label: "No clear themes yet", count: 0 },
+                    { label: "No clear themes yet", count: 1 },
                   ]).map((item) => {
                     const max = Math.max(1, ...insights.topThemes.map((t) => t.count), 1);
+                    const scale = 0.5 + (item.count / max) * 0.5; // Scale from 0.5x to 1x
+                    const size = 60 + scale * 50; 
                     return (
-                      <div key={item.label} style={styles.themeItem}>
-                        <div style={styles.themeLabel}>{item.label}</div>
-                        <div style={styles.themeBar}>
-                          <div
-                            style={{
-                              ...styles.themeBarFill,
-                              width: `${(item.count / max) * 100}%`,
-                            }}
-                          />
-                        </div>
-                        <div style={styles.themeCount}>{item.count}</div>
+                      <div 
+                        key={item.label} 
+                        style={{
+                          ...styles.themeBubble,
+                          width: size,
+                          height: size,
+                          fontSize: 10 + scale * 6,
+                          background: `radial-gradient(circle at 30% 30%, ${hexToRgba(accent, 0.8)}, ${hexToRgba(accent, 0.2)})`,
+                        }}
+                      >
+                        {item.label}
                       </div>
                     );
                   })}
