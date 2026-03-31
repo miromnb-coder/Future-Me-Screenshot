@@ -1,5 +1,3 @@
-import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
-
 export type Role = "me" | "future me";
 export type Mood = "calm" | "honest" | "direct" | "wise";
 export type ViewTab = "chat" | "insights";
@@ -46,14 +44,6 @@ export type InsightData = {
   avgLength: number;
   dominantTone: string;
   moodTrend: Record<Mood, number[]>;
-};
-
-export type ContextMenuData = {
-  messageId: string;
-  text: string;
-  role: Role;
-  x: number;
-  y: number;
 };
 
 export const STORAGE_KEY = "future-me-draft";
@@ -108,14 +98,6 @@ export const themeKeywords: Record<string, string[]> = {
   freedom: ["free", "freedom", "choice", "independent", "own", "myself", "control"],
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const supabase: SupabaseClient | null =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-
 export function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -168,20 +150,44 @@ export function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean
 
   const freeSets: Record<Mood, { en: string[]; fi: string[] }> = {
     calm: {
-      en: ["Pause first. You do not need to solve it in one move.", "The answer is usually quieter than the fear around it."],
-      fi: ["Pysähdy ensin. Tätä ei tarvitse ratkaista yhdellä liikkeellä.", "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko."],
+      en: [
+        "Pause first. You do not need to solve it in one move.",
+        "The answer is usually quieter than the fear around it.",
+      ],
+      fi: [
+        "Pysähdy ensin. Tätä ei tarvitse ratkaista yhdellä liikkeellä.",
+        "Vastaus on yleensä hiljaisempi kuin sen ympärillä oleva pelko.",
+      ],
     },
     honest: {
-      en: ["You are not really asking for information. You are asking for permission.", "The cost matters more than the option itself."],
-      fi: ["Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.", "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto."],
+      en: [
+        "You are not really asking for information. You are asking for permission.",
+        "The cost matters more than the option itself.",
+      ],
+      fi: [
+        "Et taida hakea pelkkää vastausta. Haluat että päätös tuntuisi vähemmän raskaalta.",
+        "Hinta taitaa olla tärkeämpi kuin itse vaihtoehto.",
+      ],
     },
     direct: {
-      en: ["This is simpler than it feels. Decide, then move.", "The hesitation is the real problem, not the choice."],
-      fi: ["Tämä on yksinkertaisempi kuin miltä tuntuu. Päätä ja liiku.", "Epäröinti on varsinainen ongelma, ei valinta."],
+      en: [
+        "This is simpler than it feels. Decide, then move.",
+        "The hesitation is the real problem, not the choice.",
+      ],
+      fi: [
+        "Tämä on yksinkertaisempi kuin miltä tuntuu. Päätä ja liiku.",
+        "Epäröinti on varsinainen ongelma, ei valinta.",
+      ],
     },
     wise: {
-      en: ["The real question is what this changes, not whether it works.", "The hidden cost is usually the part worth paying attention to."],
-      fi: ["Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa.", "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota."],
+      en: [
+        "The real question is what this changes, not whether it works.",
+        "The hidden cost is usually the part worth paying attention to.",
+      ],
+      fi: [
+        "Oikea kysymys ei ehkä ole onnistuuko tämä, vaan mitä tämä muuttaa.",
+        "Piilohinta on yleensä se kohta, johon kannattaa kiinnittää huomiota.",
+      ],
     },
   };
 
@@ -191,16 +197,34 @@ export function fallbackReply(latestUserText: string, mood: Mood, isPro: boolean
       fi: ["Et tarvitse enemmän voimaa. Tarvitset selkeämmän päätöksen.", "Se että tämä tuntuu yhä raskaalta on jo vihje."],
     },
     honest: {
-      en: ["You already know the answer, you are just negotiating with it.", "What you call uncertainty is often just attachment to the easier path."],
-      fi: ["Tiedät jo vastauksen, neuvottelet vain sen kanssa.", "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun."],
+      en: [
+        "You already know the answer, you are just negotiating with it.",
+        "What you call uncertainty is often just attachment to the easier path.",
+      ],
+      fi: [
+        "Tiedät jo vastauksen, neuvottelet vain sen kanssa.",
+        "Se mitä kutsut epävarmuudeksi on usein kiintymystä helpompaan polkuun.",
+      ],
     },
     direct: {
-      en: ["Choose the thing you will respect tomorrow.", "Do not optimize for comfort. Optimize for the version of you that has to live with it."],
-      fi: ["Valitse se, mitä kunnioitat huomenna.", "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa."],
+      en: [
+        "Choose the thing you will respect tomorrow.",
+        "Do not optimize for comfort. Optimize for the version of you that has to live with it.",
+      ],
+      fi: [
+        "Valitse se, mitä kunnioitat huomenna.",
+        "Älä optimoi mukavuuden mukaan. Optimoi sen sinun version mukaan, joka elää seurauksen kanssa.",
+      ],
     },
     wise: {
-      en: ["The tradeoff is the point. Once you name it, the decision gets smaller.", "You are not choosing between good and bad. You are choosing which cost is worth paying."],
-      fi: ["Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.", "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa."],
+      en: [
+        "The tradeoff is the point. Once you name it, the decision gets smaller.",
+        "You are not choosing between good and bad. You are choosing which cost is worth paying.",
+      ],
+      fi: [
+        "Vaihdon hinta on se juttu. Kun sanot sen ääneen, päätös pienenee.",
+        "Et valitse hyvän ja pahan välillä. Valitset minkä hinnan haluat maksaa.",
+      ],
     },
   };
 
@@ -220,32 +244,37 @@ export function buildMemorySummary(messages: Message[]) {
   return userTexts.slice(0, 260);
 }
 
-export function buildMemoryPrompt(messages: Message[], mood: Mood, memorySummary = "") {
+export function buildTimeContext(date = new Date()) {
+  const weekday = new Intl.DateTimeFormat("fi-FI", { weekday: "long" }).format(date);
+  const month = new Intl.DateTimeFormat("fi-FI", { month: "long" }).format(date);
+
+  const monthIndex = date.getMonth();
+  const season =
+    monthIndex <= 1 || monthIndex === 11
+      ? "winter"
+      : monthIndex <= 4
+        ? "spring"
+        : monthIndex <= 7
+          ? "summer"
+          : "autumn";
+
+  return `Current time: ${date.toLocaleString("fi-FI")}. Weekday: ${weekday}. Month: ${month}. Season: ${season}.`;
+}
+
+export function buildMemoryPrompt(messages: Message[], mood: Mood, memorySummary = "", currentTime = new Date()) {
   const recentUserMessages = messages
     .filter((m) => m.role === "me")
     .slice(-4)
     .map((m) => m.text)
     .join(" | ");
 
-  return `Mood: ${mood}. Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`.slice(0, 280);
-}
-
-export function loadDraft(key: string): PersistedState | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedState;
-    if (!parsed || !Array.isArray(parsed.messages)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-export function saveDraft(key: string, value: PersistedState) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  return [
+    `Mood: ${mood}.`,
+    buildTimeContext(currentTime),
+    `Recent user messages: ${recentUserMessages}${memorySummary ? ` | Summary: ${memorySummary}` : ""}`,
+  ]
+    .join(" ")
+    .slice(0, 340);
 }
 
 export function profileToMemoryKey(email?: string | null) {
@@ -273,74 +302,6 @@ export function localDayKeyFromISO(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return todayKey();
   return todayKey(d);
-}
-
-export async function loadCloudState(userId: string) {
-  if (!supabase) return { profile: null as ProfileRow | null, messages: [] as Message[] };
-
-  try {
-    const [profileRes, messagesRes] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("user_id,email,memory_summary,last_seen_at")
-        .eq("user_id", userId)
-        .maybeSingle(),
-      supabase
-        .from("messages")
-        .select("id,role,text,created_at")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: true })
-        .limit(120),
-    ]);
-
-    return {
-      profile: (profileRes.data ?? null) as ProfileRow | null,
-      messages: normalizeMessageRows((messagesRes.data ?? []) as MessageRow[]),
-    };
-  } catch {
-    return { profile: null, messages: [] };
-  }
-}
-
-export async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
-  if (!supabase) return;
-
-  const now = new Date().toISOString();
-
-  try {
-    const insertRes = await supabase.from("messages").insert([
-      { user_id: user.id, role: "me", text: userText, created_at: now },
-      { user_id: user.id, role: "future me", text: assistantText, created_at: now },
-    ]);
-
-    if (insertRes.error) console.error(insertRes.error);
-
-    const profileRes = await supabase.from("profiles").upsert({
-      user_id: user.id,
-      email: user.email ?? null,
-      memory_summary: memorySummary,
-      last_seen_at: now,
-    });
-
-    if (profileRes.error) console.error(profileRes.error);
-  } catch (error) {
-    console.error("Failed to save cloud turn", error);
-  }
-}
-
-export function readEmailCooldownUntil() {
-  if (typeof window === "undefined") return 0;
-  return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
-}
-
-export function writeEmailCooldownUntil(ts: number) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
-}
-
-export function vibrate(pattern: number | number[] = 10) {
-  if (typeof navigator === "undefined") return;
-  if ("vibrate" in navigator) navigator.vibrate(pattern);
 }
 
 export function hexToRgba(hex: string, alpha: number) {
@@ -403,7 +364,7 @@ export function buildInsights(messages: Message[]): InsightData {
   const dominantTone = toneScore > 3 ? "tense" : toneScore < -2 ? "confident" : "balanced";
 
   const seed = userMessages.length;
-  const moodTrend: Record<Mood, number[]> = {
+  const moodTrend = {
     calm: [2, 3, 1, 4, 2, 5, 3].map((v) => v + (seed % 2)),
     honest: [4, 1, 3, 2, 5, 1, 2].map((v) => v + (seed % 3)),
     direct: [1, 2, 4, 3, 1, 2, 5].map((v) => v + (seed % 2)),
@@ -420,55 +381,6 @@ export function buildInsights(messages: Message[]): InsightData {
   };
 }
 
-export async function callMemorySearch(query: string, userId: string, email?: string | null) {
-  try {
-    const res = await fetch("/api/memory/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query,
-        userId,
-        email,
-        limit: 6,
-      }),
-    });
-
-    if (!res.ok) return [];
-    const data = await res.json().catch(() => ({}));
-    const memories = Array.isArray(data?.memories) ? data.memories : [];
-    return memories
-      .map((item: unknown) => {
-        if (typeof item === "string") return item;
-        if (item && typeof item === "object") {
-          const obj = item as Record<string, unknown>;
-          return String(obj.text ?? obj.summary ?? obj.content ?? "");
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .slice(0, 6);
-  } catch {
-    return [];
-  }
-}
-
-export async function ingestMemory(user: User, text: string, kind: "user" | "assistant" | "summary") {
-  try {
-    await fetch("/api/memory/ingest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: user.id,
-        email: user.email ?? null,
-        kind,
-        text,
-      }),
-    });
-  } catch {
-    // optional backend
-  }
-}
-
 export function createSpeechRecognition() {
   if (typeof window === "undefined") return null;
   const w = window as Window & typeof globalThis & {
@@ -480,3 +392,25 @@ export function createSpeechRecognition() {
   return new Ctor();
 }
 
+export function vibrate(pattern: number | number[] = 10) {
+  if (typeof navigator === "undefined") return;
+  if ("vibrate" in navigator) navigator.vibrate(pattern);
+}
+
+export function loadDraft(key: string): PersistedState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedState;
+    if (!parsed || !Array.isArray(parsed.messages)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveDraft(key: string, value: PersistedState) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
