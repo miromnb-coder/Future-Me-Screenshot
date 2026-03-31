@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import { buildTimeContext } from "../../../lib/futureMe";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
 
   // 🔹 hae muisti
   const memory = await getRelevantMemories(user_id, message);
+  const timeContext = buildTimeContext();
 
   // 🔹 AI vastaus
   const completion = await groq.chat.completions.create({
@@ -47,7 +49,7 @@ export async function POST(req: Request) {
       {
         role: "system",
         content: `
-You are Future Me.
+You are Future Me. ${timeContext}
 
 You have access to long-term memory of the user:
 ${memory}
