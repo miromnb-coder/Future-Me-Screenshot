@@ -8,7 +8,13 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ChangeEvent, CSSProperties, KeyboardEvent, ReactNode } from "react";
+import type {
+  ChangeEvent,
+  CSSProperties,
+  KeyboardEvent,
+  ReactNode,
+  UIEvent,
+} from "react";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 type Role = "me" | "future me";
@@ -20,6 +26,7 @@ type Message = {
   role: Role;
   text: string;
   time: string;
+  createdAt: string;
 };
 
 type Usage = {
@@ -61,6 +68,7 @@ type InsightData = {
 type ContextMenuData = {
   messageId: string;
   text: string;
+  role: Role;
   x: number;
   y: number;
 };
@@ -78,6 +86,7 @@ const WELCOME_MESSAGE: Message = {
   role: "future me",
   text: "Write one thought. I’ll keep the conversation going.",
   time: "now",
+  createdAt: new Date().toISOString(),
 };
 
 const moodLabels: Record<Mood, string> = {
@@ -128,19 +137,18 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function formatClock() {
-  return new Date().toLocaleTimeString([], {
+function formatClock(date = new Date()) {
+  return date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function todayKey() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function todayKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function defaultUsage(): Usage {
@@ -322,7 +330,14 @@ function normalizeMessageRows(rows: MessageRow[] | null | undefined): Message[] 
       hour: "2-digit",
       minute: "2-digit",
     }),
+    createdAt: m.created_at,
   }));
+}
+
+function localDayKeyFromISO(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return todayKey();
+  return todayKey(d);
 }
 
 async function loadCloudState(userId: string) {
@@ -359,9 +374,10 @@ async function saveCloudTurn(user: User, userText: string, assistantText: string
 
   try {
     const insertRes = await supabase.from("messages").insert([
-      { user_id: user.id, role: "me", text: userText },
-      { user_id: user.id, role: "future me", text: assistantText },
+      { user_id: user.id, role: "me", text: userText, created_at: now },
+      { user_id: user.id, role: "future me", text: assistantText, created_at: now },
     ]);
+
     if (insertRes.error) console.error(insertRes.error);
 
     const profileRes = await supabase.from("profiles").upsert({
@@ -370,6 +386,7 @@ async function saveCloudTurn(user: User, userText: string, assistantText: string
       memory_summary: memorySummary,
       last_seen_at: now,
     });
+
     if (profileRes.error) console.error(profileRes.error);
   } catch (error) {
     console.error("Failed to save cloud turn", error);
@@ -388,9 +405,7 @@ function writeEmailCooldownUntil(ts: number) {
 
 function vibrate(pattern: number | number[] = 10) {
   if (typeof navigator === "undefined") return;
-  if ("vibrate" in navigator) {
-    navigator.vibrate(pattern);
-  }
+  if ("vibrate" in navigator) navigator.vibrate(pattern);
 }
 
 function hexToRgba(hex: string, alpha: number) {
@@ -431,11 +446,11 @@ function buildInsights(messages: Message[]): InsightData {
   for (let i = 6; i >= 0; i -= 1) {
     const d = new Date(now);
     d.setDate(now.getDate() - i);
-    countsByDay[d.toISOString().slice(0, 10)] = 0;
+    countsByDay[todayKey(d)] = 0;
   }
 
   userMessages.forEach((msg) => {
-    const day = todayKey();
+    const day = localDayKeyFromISO(msg.createdAt);
     if (countsByDay[day] !== undefined) countsByDay[day] += 1;
   });
 
@@ -447,19 +462,17 @@ function buildInsights(messages: Message[]): InsightData {
 
   const text = userMessages.map((m) => m.text.toLowerCase()).join(" ");
   const toneScore =
-    (text.match(/\b(can't|can't|worry|afraid|fear|stress|stuck|worried)\b/g)?.length ?? 0) -
-    (text.match(/\b(ready|clear|calm|good|better|grow|move|progress)\b/g)?.length ?? 0);
+    (text.match(/\b(worried|worry|afraid|fear|stress|stuck|anxious|anxiety)\b/g)?.length ?? 0) -
+    (text.match(/\b(clear|calm|good|better|grow|move|progress|ready)\b/g)?.length ?? 0);
 
-  const dominantTone =
-    toneScore > 3 ? "tense" : toneScore < -2 ? "confident" : "balanced";
+  const dominantTone = toneScore > 3 ? "tense" : toneScore < -2 ? "confident" : "balanced";
 
-  // Mocked trend data based on deterministic lengths
   const seed = userMessages.length;
   const moodTrend = {
-    calm: [2, 3, 1, 4, 2, 5, 3].map(v => v + (seed % 2)),
-    honest: [4, 1, 3, 2, 5, 1, 2].map(v => v + (seed % 3)),
-    direct: [1, 2, 4, 3, 1, 2, 5].map(v => v + (seed % 2)),
-    wise: [3, 4, 2, 1, 3, 4, 1].map(v => v + (seed % 3)),
+    calm: [2, 3, 1, 4, 2, 5, 3].map((v) => v + (seed % 2)),
+    honest: [4, 1, 3, 2, 5, 1, 2].map((v) => v + (seed % 3)),
+    direct: [1, 2, 4, 3, 1, 2, 5].map((v) => v + (seed % 2)),
+    wise: [3, 4, 2, 1, 3, 4, 1].map((v) => v + (seed % 3)),
   };
 
   return {
@@ -537,11 +550,13 @@ function InteractiveGlassCard({
   style,
   children,
   className,
+  onClick,
 }: {
   accent: string;
   style?: CSSProperties;
   children: ReactNode;
   className?: string;
+  onClick?: () => void;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState({ x: 50, y: 50, dx: 0, dy: 0, active: false });
@@ -550,7 +565,8 @@ function InteractiveGlassCard({
     <motion.div
       ref={ref}
       className={className}
-      onMouseMove={(e) => {
+      onClick={onClick}
+      onPointerMove={(e) => {
         const rect = ref.current?.getBoundingClientRect();
         if (!rect) return;
         const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -559,17 +575,13 @@ function InteractiveGlassCard({
         const dy = (e.clientY - rect.top - rect.height / 2) / rect.height;
         setHover({ x, y, dx, dy, active: true });
       }}
-      onMouseLeave={() => setHover({ x: 50, y: 50, dx: 0, dy: 0, active: false })}
-      whileHover={{ y: -2, scale: 1.003 }}
-      transition={{ type: "spring", stiffness: 180, damping: 22 }}
+      onPointerLeave={() => setHover({ x: 50, y: 50, dx: 0, dy: 0, active: false })}
       style={{
         ...style,
         position: "relative",
         overflow: "hidden",
         transformStyle: "preserve-3d",
-        transform: `perspective(1200px) rotateX(${hover.active ? -hover.dy * 8 : 0}deg) rotateY(${
-          hover.active ? hover.dx * 10 : 0
-        }deg) translateY(0px)`,
+        transform: `perspective(1200px) rotateX(${hover.active ? -hover.dy * 7 : 0}deg) rotateY(${hover.active ? hover.dx * 9 : 0}deg)`,
       }}
     >
       <div
@@ -590,8 +602,7 @@ function InteractiveGlassCard({
           inset: 0,
           pointerEvents: "none",
           opacity: 0.08,
-          backgroundImage:
-            "radial-gradient(rgba(255,255,255,0.9) 0.7px, transparent 0.7px)",
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.9) 0.7px, transparent 0.7px)",
           backgroundSize: "3px 3px",
           mixBlendMode: "soft-light",
         }}
@@ -611,8 +622,7 @@ function createStyles(
   activeTab: ViewTab
 ): Record<string, CSSProperties> {
   const panelBorder = "1px solid rgba(255,255,255,0.10)";
-  const glassBg =
-    "linear-gradient(145deg, rgba(24, 26, 38, 0.72), rgba(255,255,255,0.05))";
+  const glassBg = "linear-gradient(145deg, rgba(24, 26, 38, 0.72), rgba(255,255,255,0.05))";
   const textMain = "#ffffff";
   const textMuted = "rgba(255,255,255,0.62)";
 
@@ -671,8 +681,7 @@ function createStyles(
       pointerEvents: "none",
       zIndex: 0,
       opacity: 0.055,
-      backgroundImage:
-        "radial-gradient(rgba(255,255,255,0.24) 0.7px, transparent 0.7px)",
+      backgroundImage: "radial-gradient(rgba(255,255,255,0.24) 0.7px, transparent 0.7px)",
       backgroundSize: "3px 3px",
       mixBlendMode: "soft-light",
     },
@@ -721,6 +730,7 @@ function createStyles(
       borderRadius: 999,
       background: "rgba(255,255,255,0.04)",
       border: panelBorder,
+      marginTop: 6,
     },
     tabButton: {
       border: 0,
@@ -742,8 +752,8 @@ function createStyles(
       boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.12)} inset`,
     },
     iconButton: {
-      width: 44,
-      height: 44,
+      width: 46,
+      height: 46,
       borderRadius: 16,
       border: panelBorder,
       background: "rgba(255,255,255,0.05)",
@@ -752,6 +762,8 @@ function createStyles(
       placeItems: "center",
       cursor: "pointer",
       boxShadow: "0 8px 16px rgba(0,0,0,0.22)",
+      fontSize: 18,
+      fontWeight: 900,
     },
     hero: {
       borderRadius: 30,
@@ -1263,6 +1275,8 @@ function createStyles(
       position: "relative",
       zIndex: 1,
       overflowY: "auto",
+      scrollbarWidth: "none",
+      msOverflowStyle: "none",
     },
     stream: {
       display: "flex",
@@ -1463,17 +1477,6 @@ function createStyles(
       fontSize: 15,
       boxShadow: "0 8px 20px rgba(0,0,0,0.18)",
       cursor: "pointer",
-    },
-    focusModeToggleBtn: {
-      position: "absolute",
-      right: 18,
-      top: 18,
-      background: "transparent",
-      border: "none",
-      color: textMuted,
-      cursor: "pointer",
-      fontSize: 18,
-      zIndex: 2,
     },
     helper: {
       padding: "0 16px 16px",
@@ -1772,7 +1775,7 @@ function createStyles(
       justifyContent: "center",
       alignItems: "center",
       marginTop: 20,
-      padding: "10px 0"
+      padding: "10px 0",
     },
     themeBubble: {
       borderRadius: "50%",
@@ -1786,7 +1789,8 @@ function createStyles(
       boxShadow: `0 8px 24px ${hexToRgba(accent, 0.3)}`,
       textAlign: "center",
       border: "1px solid rgba(255,255,255,0.15)",
-      transition: "transform 0.2s ease"
+      transition: "transform 0.2s ease",
+      userSelect: "none",
     },
     voiceHint: {
       fontSize: 12,
@@ -1828,59 +1832,8 @@ function createStyles(
       zIndex: 10,
       fontSize: 18,
     },
-    focusModeOverlay: {
-      position: "fixed",
-      inset: 0,
-      zIndex: 9999,
-      background: "rgba(9, 9, 13, 0.98)",
-      backdropFilter: "blur(20px)",
-      display: "flex",
-      flexDirection: "column",
-      padding: mobile ? 20 : 40,
-    },
-    focusModeHeader: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 20,
-    },
-    focusModeTitle: {
-      fontSize: 20,
-      fontWeight: 800,
-      color: textMuted,
-      letterSpacing: "0.05em",
-      textTransform: "uppercase",
-    },
-    focusModeClose: {
-      background: "rgba(255,255,255,0.05)",
-      border: panelBorder,
-      color: textMain,
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      cursor: "pointer",
-    },
-    focusModeTextarea: {
-      flex: 1,
-      width: "100%",
-      background: "transparent",
-      border: "none",
-      color: textMain,
-      fontSize: mobile ? 22 : 32,
-      lineHeight: 1.4,
-      outline: "none",
-      resize: "none",
-    },
-    focusModeFooter: {
-      marginTop: 20,
-      display: "flex",
-      justifyContent: "flex-end",
-    },
     contextMenu: {
-      position: "absolute",
+      position: "fixed",
       zIndex: 100,
       background: "rgba(24, 26, 38, 0.95)",
       backdropFilter: "blur(20px)",
@@ -1891,7 +1844,7 @@ function createStyles(
       flexDirection: "column",
       gap: 4,
       boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
-      minWidth: 180,
+      minWidth: 220,
     },
     contextMenuBtn: {
       background: "transparent",
@@ -1904,9 +1857,9 @@ function createStyles(
       borderRadius: 10,
       cursor: "pointer",
     },
-    contextMenuBtnHover: {
-      background: "rgba(255,255,255,0.1)",
-    }
+    contextMenuBtnDanger: {
+      color: "#fb7185",
+    },
   };
 }
 
@@ -1933,16 +1886,15 @@ export default function Page() {
   const [activeTab, setActiveTab] = useState<ViewTab>("chat");
   const [retrievedMemories, setRetrievedMemories] = useState<string[]>([]);
   const [voiceListening, setVoiceListening] = useState(false);
-  
-  // New States
   const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
-  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const threadBodyRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
-  const longPressTimeout = useRef<NodeJS.Timeout | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const accentMap: Record<Mood, string> = {
     calm: "#60a5fa",
@@ -1952,9 +1904,7 @@ export default function Page() {
   };
   const accent = accentMap[mood];
 
-  const remainingToday =
-    usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
-
+  const remainingToday = usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
   const draftKey = useMemo(() => profileToDraftKey(user?.email), [user?.email]);
   const memoryKey = useMemo(() => profileToMemoryKey(user?.email), [user?.email]);
   const hasConversationStarted = messages.some((m) => m.id !== "welcome");
@@ -1962,11 +1912,22 @@ export default function Page() {
   const liveLabel = loading ? "responding..." : hasConversationStarted ? "online" : "ready";
   const composerPlaceholder = moodPlaceholders[mood];
   const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud sync on" : "private draft";
-
   const insights = useMemo(() => buildInsights(messages), [messages]);
 
+  const contextMenuPosition = useMemo(() => {
+    if (!contextMenu) return null;
+    const width = viewport.width || 390;
+    const height = viewport.height || 844;
+    const left = Math.max(12, Math.min(contextMenu.x, width - 240));
+    const top = Math.max(12, Math.min(contextMenu.y, height - 240));
+    return { left, top };
+  }, [contextMenu, viewport]);
+
   useEffect(() => {
-    const update = () => setMobile(window.innerWidth < 900);
+    const update = () => {
+      setMobile(window.innerWidth < 900);
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    };
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -2032,7 +1993,7 @@ export default function Page() {
         usage,
       });
       window.localStorage.setItem(memoryKey, memorySummary);
-    }, 250);
+    }, 220);
 
     return () => window.clearTimeout(timeoutId);
   }, [draftKey, hydrated, input, isPro, messages, mood, memoryKey, memorySummary, usage]);
@@ -2045,26 +2006,16 @@ export default function Page() {
     }
   }, [messages, memoryKey, user?.email]);
 
-  // Automaattinen Focus Mode
   useEffect(() => {
-    if (input.length > 120 && !isFocusMode && !window.sessionStorage.getItem('dismissedFocus')) {
-      setIsFocusMode(true);
-    }
-  }, [input, isFocusMode]);
-
-  // Scroll to bottom logiikka
-  useEffect(() => {
-    if (!showScrollBottom && bottomRef.current) {
-        bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
-  }, [messages, loading, showScrollBottom]);
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading]);
 
   useEffect(() => {
-    document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet || isFocusMode ? "hidden" : "auto";
+    document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet || contextMenu ? "hidden" : "auto";
     return () => {
       document.body.style.overflow = "auto";
     };
-  }, [menuOpen, paywallOpen, showSaveSheet, isFocusMode]);
+  }, [menuOpen, paywallOpen, showSaveSheet, contextMenu]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -2096,31 +2047,14 @@ export default function Page() {
     [mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab]
   );
 
-  const handleChatScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const distanceToBottom = scrollHeight - scrollTop - clientHeight;
-    setShowScrollBottom(distanceToBottom > 100);
-  };
-
-  const handleTouchStart = (e: React.TouchEvent | React.MouseEvent, msg: Message) => {
-    let clientX, clientY;
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-    
-    longPressTimeout.current = setTimeout(() => {
-      vibrate(15);
-      setContextMenu({ messageId: msg.id, text: msg.text, x: clientX, y: clientY });
-    }, 500);
-  };
-
-  const handleTouchEnd = () => {
-    if (longPressTimeout.current) clearTimeout(longPressTimeout.current);
-  };
+  const incrementUsage = useCallback(() => {
+    setUsage((prevUsage) => {
+      const today = todayKey();
+      return prevUsage.date === today
+        ? { date: today, count: prevUsage.count + 1 }
+        : { date: today, count: 1 };
+    });
+  }, []);
 
   async function syncSession(nextUser: User | null) {
     setUser(nextUser);
@@ -2163,23 +2097,11 @@ export default function Page() {
     }
 
     if (cloudMessages.length > 0) {
-      const longTerm = await callMemorySearch(
-        messages.filter((m) => m.role === "me").slice(-1)[0]?.text ?? "",
-        nextUser.id,
-        nextUser.email
-      );
+      const lastQuery = messages.filter((m) => m.role === "me").slice(-1)[0]?.text ?? "";
+      const longTerm = await callMemorySearch(lastQuery, nextUser.id, nextUser.email);
       setRetrievedMemories(longTerm);
     }
   }
-
-  const incrementUsage = useCallback(() => {
-    setUsage((prevUsage) => {
-      const today = todayKey();
-      return prevUsage.date === today
-        ? { date: today, count: prevUsage.count + 1 }
-        : { date: today, count: 1 };
-    });
-  }, []);
 
   async function signInWithEmail() {
     if (!supabase) {
@@ -2239,9 +2161,9 @@ export default function Page() {
   async function shareMessage(text: string) {
     try {
       if (navigator.share) {
-        await navigator.share({
-          text: text,
-        });
+        await navigator.share({ text });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
       }
       setContextMenu(null);
     } catch {
@@ -2250,14 +2172,17 @@ export default function Page() {
   }
 
   function deleteMessage(id: string) {
-    setMessages((prev) => prev.filter((m) => m.id !== id));
+    if (id === "welcome") return;
+    setMessages((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      return next.length > 0 ? next : [WELCOME_MESSAGE];
+    });
     setContextMenu(null);
   }
 
   function deepenThought(text: string) {
     setInput(`Deepen this thought: "${text}"\n\n`);
     setContextMenu(null);
-    setIsFocusMode(true);
     setTimeout(() => textareaRef.current?.focus(), 0);
   }
 
@@ -2305,7 +2230,6 @@ export default function Page() {
 
   async function searchLongTerm(query: string) {
     if (!user) return [];
-
     const localFallback = retrievedMemories.length > 0 ? retrievedMemories : [];
     const fromServer = await callMemorySearch(query, user.id, user.email);
     return fromServer.length > 0 ? fromServer : localFallback;
@@ -2328,13 +2252,14 @@ export default function Page() {
     }
 
     vibrate([12, 20, 12]);
-    setIsFocusMode(false);
 
+    const now = new Date().toISOString();
     const userMessage: Message = {
       id: uid(),
       role: "me",
       text: trimmed,
       time: formatClock(),
+      createdAt: now,
     };
 
     const nextMessages = [...messages, userMessage].slice(-MAX_MESSAGES);
@@ -2386,6 +2311,7 @@ export default function Page() {
         role: "future me",
         text: replyText,
         time: formatClock(),
+        createdAt: new Date().toISOString(),
       };
 
       const finalMessages = [...nextMessages, assistantMessage].slice(-MAX_MESSAGES);
@@ -2412,6 +2338,7 @@ export default function Page() {
         role: "future me",
         text: replyText,
         time: formatClock(),
+        createdAt: new Date().toISOString(),
       };
 
       const finalMessages = [...nextMessages, assistantMessage].slice(-MAX_MESSAGES);
@@ -2445,6 +2372,7 @@ export default function Page() {
     setMemorySummary("");
     setRetrievedMemories([]);
     setActiveTab("chat");
+    setContextMenu(null);
     textareaRef.current?.focus();
   }
 
@@ -2490,10 +2418,39 @@ export default function Page() {
 
   const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    if (!isFocusMode) {
-      e.target.style.height = "auto";
-      e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+    e.target.style.height = "auto";
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+  };
+
+  const openMessageMenu = (message: Message, x: number, y: number) => {
+    setContextMenu({
+      messageId: message.id,
+      text: message.text,
+      role: message.role,
+      x,
+      y,
+    });
+  };
+
+  const handleLongPressStart = (message: Message) => (e: React.PointerEvent<HTMLElement>) => {
+    if (e.pointerType === "mouse") return;
+    longPressTimerRef.current = setTimeout(() => {
+      vibrate(15);
+      openMessageMenu(message, e.clientX, e.clientY);
+    }, 450);
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
+  };
+
+  const handleThreadScroll = (e: UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+    setShowScrollBottom(distanceToBottom > 120);
   };
 
   return (
@@ -2541,6 +2498,11 @@ export default function Page() {
           color: #ffffff;
         }
 
+        ::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+        }
+
         @keyframes floatIn {
           from {
             opacity: 0;
@@ -2570,43 +2532,49 @@ export default function Page() {
       {showSaveSheet && <div style={styles.sheetBackdrop} onClick={() => setShowSaveSheet(false)} />}
       {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
       {paywallOpen && <div style={styles.paywallBackdrop} onClick={() => setPaywallOpen(false)} />}
-      {contextMenu && <div style={{...styles.sheetBackdrop, background: "transparent", zIndex: 90}} onClick={() => setContextMenu(null)} onContextMenu={(e) => {e.preventDefault(); setContextMenu(null)}} />}
-
       {contextMenu && (
-        <div style={{
-          ...styles.contextMenu,
-          left: Math.min(contextMenu.x, window.innerWidth - 200),
-          top: Math.min(contextMenu.y, window.innerHeight - 200)
-        }}>
-          <button style={styles.contextMenuBtn} onClick={() => copyMessage(contextMenu.text, contextMenu.messageId)}>Copy Text</button>
-          <button style={styles.contextMenuBtn} onClick={() => shareMessage(contextMenu.text)}>Share</button>
-          <button style={styles.contextMenuBtn} onClick={() => deepenThought(contextMenu.text)}>Deepen this thought</button>
-          <button style={{...styles.contextMenuBtn, color: "#ef4444"}} onClick={() => deleteMessage(contextMenu.messageId)}>Delete</button>
-        </div>
+        <div
+          style={{
+            ...styles.sheetBackdrop,
+            background: "transparent",
+            zIndex: 90,
+          }}
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu(null);
+          }}
+        />
       )}
 
-      {isFocusMode && (
-        <div style={styles.focusModeOverlay}>
-          <div style={styles.focusModeHeader}>
-            <span style={styles.focusModeTitle}>Focus Mode</span>
-            <button style={styles.focusModeClose} onClick={() => {
-              setIsFocusMode(false);
-              window.sessionStorage.setItem('dismissedFocus', 'true');
-            }}>✕</button>
-          </div>
-          <textarea
-            autoFocus
-            style={styles.focusModeTextarea}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Keep writing. No distractions."
-          />
-          <div style={styles.focusModeFooter}>
-            <button style={{...styles.sendButton, minWidth: 150}} onClick={() => void sendMessage()} disabled={loading}>
-              {loading ? "Thinking..." : "Send"}
+      {contextMenu && contextMenuPosition && (
+        <div
+          style={{
+            ...styles.contextMenu,
+            left: contextMenuPosition.left,
+            top: contextMenuPosition.top,
+          }}
+        >
+          <button style={styles.contextMenuBtn} onClick={() => copyMessage(contextMenu.text, contextMenu.messageId)}>
+            Copy text
+          </button>
+          <button style={styles.contextMenuBtn} onClick={() => shareMessage(contextMenu.text)}>
+            Share
+          </button>
+          <button
+            style={styles.contextMenuBtn}
+            onClick={() => deepenThought(contextMenu.text)}
+          >
+            Deepen this thought
+          </button>
+          {contextMenu.role === "me" ? (
+            <button
+              style={{ ...styles.contextMenuBtn, ...styles.contextMenuBtnDanger }}
+              onClick={() => deleteMessage(contextMenu.messageId)}
+            >
+              Delete
             </button>
-          </div>
+          ) : null}
         </div>
       )}
 
@@ -2719,15 +2687,30 @@ export default function Page() {
           </div>
 
           <div style={styles.paywallButtons}>
-            <button style={styles.proButton} onClick={() => setIsPro(true)}>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
+              style={styles.proButton}
+              onClick={() => setIsPro(true)}
+            >
               Unlock demo Pro
-            </button>
-            <button style={styles.ghostButton} onClick={shareConversation}>
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
+              style={styles.ghostButton}
+              onClick={shareConversation}
+            >
               Share conversation
-            </button>
-            <button style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
+              style={styles.ghostButton}
+              onClick={() => setPaywallOpen(false)}
+            >
               Not now
-            </button>
+            </motion.button>
           </div>
 
           <div style={styles.hintLine}>
@@ -2738,34 +2721,48 @@ export default function Page() {
 
       <div style={styles.shell}>
         <header style={styles.topBar}>
-          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            style={styles.iconButton}
+            aria-label="Menu"
+            onClick={() => setMenuOpen(true)}
+          >
             ≡
-          </button>
+          </motion.button>
 
           <div style={styles.topTitle}>
             <div style={styles.brand}>Future Me</div>
             <div style={styles.brandSub}>{user ? "synced cloud memory" : "guest mode · local memory"}</div>
             <div style={styles.tabSwitcher}>
-              <button
+              <motion.button
+                whileTap={{ scale: 0.96 }}
                 type="button"
                 style={activeTab === "chat" ? styles.tabButtonActive : styles.tabButton}
                 onClick={() => setActiveTab("chat")}
               >
                 Chat
-              </button>
-              <button
+              </motion.button>
+              <motion.button
+                whileTap={{ scale: 0.96 }}
                 type="button"
                 style={activeTab === "insights" ? styles.tabButtonActive : styles.tabButton}
                 onClick={() => setActiveTab("insights")}
               >
                 Insights
-              </button>
+              </motion.button>
             </div>
           </div>
 
-          <button style={styles.iconButton} aria-label="Menu" onClick={() => setMenuOpen(true)}>
+          <motion.button
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            style={styles.iconButton}
+            aria-label="More"
+            onClick={() => setMenuOpen(true)}
+          >
             ⋯
-          </button>
+          </motion.button>
         </header>
 
         <AnimatePresence mode="wait" initial={false}>
@@ -2825,17 +2822,32 @@ export default function Page() {
 
                   <div style={styles.compactActionRow}>
                     {memorySummary ? (
-                      <button style={styles.compactButton} onClick={continueFromYesterday}>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.96 }}
+                        style={styles.compactButton}
+                        onClick={continueFromYesterday}
+                      >
                         Continue from yesterday
-                      </button>
+                      </motion.button>
                     ) : (
-                      <button style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.96 }}
+                        style={styles.compactButton}
+                        onClick={() => textareaRef.current?.focus()}
+                      >
                         Keep writing
-                      </button>
+                      </motion.button>
                     )}
-                    <button style={styles.compactGhost} onClick={() => setMenuOpen(true)}>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.96 }}
+                      style={styles.compactGhost}
+                      onClick={() => setMenuOpen(true)}
+                    >
                       Open actions
-                    </button>
+                    </motion.button>
                   </div>
                 </InteractiveGlassCard>
               )}
@@ -2856,13 +2868,25 @@ export default function Page() {
                 <span style={styles.pill}>{user ? "synced to cloud" : "guest mode"}</span>
                 <span style={styles.pill}>{visibleMessageCount} messages</span>
                 {!user ? (
-                  <button style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={styles.pillAction}
+                    type="button"
+                    onClick={() => setShowSaveSheet(true)}
+                  >
                     Save with email
-                  </button>
+                  </motion.button>
                 ) : (
-                  <button style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={styles.pillAction}
+                    type="button"
+                    onClick={() => setMenuOpen(true)}
+                  >
                     Account
-                  </button>
+                  </motion.button>
                 )}
               </div>
 
@@ -2912,8 +2936,10 @@ export default function Page() {
                     {(Object.keys(moodLabels) as Mood[]).map((item) => {
                       const active = item === mood;
                       return (
-                        <button
+                        <motion.button
                           key={item}
+                          whileHover={{ y: -2 }}
+                          whileTap={{ scale: 0.96 }}
                           type="button"
                           onClick={() => {
                             setMood(item);
@@ -2927,7 +2953,7 @@ export default function Page() {
                           </div>
                           <div style={styles.moodLabel}>{moodLabels[item]}</div>
                           <div style={styles.moodLabelSub}>{active ? moodHints[item] : " "}</div>
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
@@ -2940,9 +2966,7 @@ export default function Page() {
                     <div style={styles.avatar}>FM</div>
                     <div style={{ minWidth: 0 }}>
                       <div style={styles.aiTitle}>Future Me</div>
-                      <div style={styles.aiSub}>
-                        {hasConversationStarted ? "Online & remembering" : "Ready to respond"}
-                      </div>
+                      <div style={styles.aiSub}>{hasConversationStarted ? "Online & remembering" : "Ready to respond"}</div>
                     </div>
                   </div>
 
@@ -2976,7 +3000,7 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div style={styles.threadBody} onScroll={handleChatScroll}>
+                <div ref={threadBodyRef} style={styles.threadBody} onScroll={handleThreadScroll}>
                   <div style={styles.stream}>
                     <AnimatePresence initial={false} mode="popLayout">
                       {messages.map((message) => {
@@ -3000,12 +3024,13 @@ export default function Page() {
                             }}
                           >
                             <article
-                              onTouchStart={(e) => handleTouchStart(e, message)}
-                              onTouchEnd={handleTouchEnd}
-                              onTouchMove={handleTouchEnd}
+                              onPointerDown={handleLongPressStart(message)}
+                              onPointerUp={handleLongPressEnd}
+                              onPointerCancel={handleLongPressEnd}
+                              onPointerLeave={handleLongPressEnd}
                               onContextMenu={(e) => {
                                 e.preventDefault();
-                                setContextMenu({ messageId: message.id, text: message.text, x: e.clientX, y: e.clientY });
+                                openMessageMenu(message, e.clientX, e.clientY);
                               }}
                               style={{
                                 ...styles.messageBubble,
@@ -3014,6 +3039,13 @@ export default function Page() {
                             >
                               <div style={styles.messageTop}>
                                 <span style={roleStyle}>{isUser ? "You" : "Future Me"}</span>
+                                <button
+                                  type="button"
+                                  style={styles.copyButton}
+                                  onClick={() => void copyMessage(message.text, message.id)}
+                                >
+                                  {copiedId === message.id ? "Copied" : "Copy"}
+                                </button>
                               </div>
 
                               <div style={styles.messageText}>{message.text}</div>
@@ -3047,13 +3079,13 @@ export default function Page() {
                     <div ref={bottomRef} />
                   </div>
                 </div>
-                
+
                 {showScrollBottom && (
-                  <button 
+                  <button
                     style={styles.scrollBottomBtn}
                     onClick={() => {
                       setShowScrollBottom(false);
-                      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+                      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
                     }}
                   >
                     ↓
@@ -3062,13 +3094,6 @@ export default function Page() {
               </InteractiveGlassCard>
 
               <InteractiveGlassCard accent={accent} style={styles.composerShell}>
-                <button 
-                  style={styles.focusModeToggleBtn} 
-                  title="Enter Focus Mode"
-                  onClick={() => setIsFocusMode(true)}
-                >
-                  ⛶
-                </button>
                 <div style={styles.composerTop}>
                   <span style={styles.composerChip}>{moodLabels[mood]} mode</span>
                   <span style={styles.composerChip}>{memoryBadge}</span>
@@ -3088,13 +3113,25 @@ export default function Page() {
                     rows={1}
                   />
 
-                  <button style={styles.micButton} onClick={() => void startVoice()} disabled={loading}>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={styles.micButton}
+                    onClick={() => void startVoice()}
+                    disabled={loading}
+                  >
                     {voiceListening ? "■" : "◉"}
-                  </button>
+                  </motion.button>
 
-                  <button style={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={styles.sendButton}
+                    onClick={() => void sendMessage()}
+                    disabled={loading}
+                  >
                     {loading ? "Thinking..." : "Send"}
-                  </button>
+                  </motion.button>
                 </div>
 
                 <div style={styles.helper}>
@@ -3125,7 +3162,10 @@ export default function Page() {
                 <div style={styles.heroTitle}>
                   Your thoughts,
                   <br />
-                  mapped into <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>patterns.</span>
+                  mapped into{" "}
+                  <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>
+                    patterns.
+                  </span>
                 </div>
 
                 <div style={styles.heroSub}>
@@ -3137,9 +3177,7 @@ export default function Page() {
               <div style={styles.insightsGrid}>
                 <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                   <div style={styles.insightTitle}>Week Activity</div>
-                  <div style={styles.insightSub}>
-                    Messages per day across the last 7 days.
-                  </div>
+                  <div style={styles.insightSub}>Messages per day across the last 7 days.</div>
 
                   <div style={styles.sparkWrap}>
                     <div style={styles.sparkBars}>
@@ -3163,9 +3201,7 @@ export default function Page() {
 
                 <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                   <div style={styles.insightTitle}>Snapshot</div>
-                  <div style={styles.insightSub}>
-                    A quick summary of the thread shape right now.
-                  </div>
+                  <div style={styles.insightSub}>A quick summary of the thread shape right now.</div>
 
                   <div style={styles.miniCards}>
                     <div style={styles.miniCard}>
@@ -3195,21 +3231,21 @@ export default function Page() {
 
               <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                 <div style={styles.insightTitle}>Mood Trend</div>
-                <div style={styles.insightSub}>
-                  How the AI modes matched your thoughts over the last 7 days.
-                </div>
+                <div style={styles.insightSub}>How the AI modes matched your thoughts over the last 7 days.</div>
 
                 <div style={{ position: "relative", height: 160, marginTop: 20, width: "100%" }}>
                   <svg width="100%" height="100%" viewBox="0 0 700 160" preserveAspectRatio="none">
                     {(Object.keys(insights.moodTrend) as Mood[]).map((mKey) => {
                       const data = insights.moodTrend[mKey];
                       const maxVal = Math.max(1, ...Object.values(insights.moodTrend).flat());
-                      const points = data.map((val, i) => {
-                        const x = (i / 6) * 700;
-                        const y = 160 - (val / maxVal) * 140; 
-                        return `${x},${y}`;
-                      }).join(" L ");
-                      
+                      const points = data
+                        .map((val, i) => {
+                          const x = (i / 6) * 700;
+                          const y = 160 - (val / maxVal) * 140;
+                          return `${x},${y}`;
+                        })
+                        .join(" L ");
+
                       return (
                         <path
                           key={mKey}
@@ -3225,28 +3261,40 @@ export default function Page() {
                       );
                     })}
                   </svg>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: textMuted }}>
-                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginTop: 8,
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.62)",
+                    }}
+                  >
+                    <span>Mon</span>
+                    <span>Tue</span>
+                    <span>Wed</span>
+                    <span>Thu</span>
+                    <span>Fri</span>
+                    <span>Sat</span>
+                    <span>Sun</span>
                   </div>
                 </div>
               </InteractiveGlassCard>
 
               <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                 <div style={styles.insightTitle}>Recurring themes</div>
-                <div style={styles.insightSub}>
-                  Interactive word cloud based on frequency.
-                </div>
+                <div style={styles.insightSub}>Interactive word cloud based on frequency.</div>
 
                 <div style={styles.themeBubbleContainer}>
-                  {(insights.topThemes.length > 0 ? insights.topThemes : [
-                    { label: "No clear themes yet", count: 1 },
-                  ]).map((item) => {
+                  {(insights.topThemes.length > 0
+                    ? insights.topThemes
+                    : [{ label: "No clear themes yet", count: 1 }]).map((item) => {
                     const max = Math.max(1, ...insights.topThemes.map((t) => t.count), 1);
-                    const scale = 0.5 + (item.count / max) * 0.5; // Scale from 0.5x to 1x
-                    const size = 60 + scale * 50; 
+                    const scale = 0.5 + (item.count / max) * 0.5;
+                    const size = 60 + scale * 50;
                     return (
-                      <div 
-                        key={item.label} 
+                      <div
+                        key={item.label}
                         style={{
                           ...styles.themeBubble,
                           width: size,
