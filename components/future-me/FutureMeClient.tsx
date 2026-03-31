@@ -1,120 +1,216 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, CSSProperties, KeyboardEvent, ReactNode, UIEvent } from "react";
-import type { User } from "@supabase/supabase-js";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type {
+  ChangeEvent,
+  CSSProperties,
+  KeyboardEvent,
+  UIEvent,
+} from "react";
+import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 
 import {
   buildInsights,
   buildMemoryPrompt,
   buildMemorySummary,
-  callMemorySearch,
+  buildTimeContext,
   createSpeechRecognition,
   defaultUsage,
+  EMAIL_COOLDOWN_KEY,
   EMAIL_COOLDOWN_MS,
   fallbackReply,
   FREE_LIMIT,
   formatClock,
   hexToRgba,
-  ingestMemory,
-  loadCloudState,
   loadDraft,
+  looksFinnish,
   MAX_MESSAGES,
   MEMORY_SUMMARY_KEY,
+  MIN_REPLY_DELAY_MS,
   moodHints,
   moodIcons,
   moodLabels,
   moodPlaceholders,
+  normalizeMessageRows,
   normalizeUsage,
   profileToDraftKey,
   profileToMemoryKey,
-  readEmailCooldownUntil,
-  saveCloudTurn,
   saveDraft,
   STORAGE_KEY,
   todayKey,
-  uid,
-  vibrate,
-  WELCOME_MESSAGE,
-  writeEmailCooldownUntil,
-  supabase,
-  type ContextMenuData,
   type Message,
   type Mood,
+  type PersistedState,
+  type ProfileRow,
+  type Role,
   type Usage,
   type ViewTab,
+  uid,
+  WELCOME_MESSAGE,
+  vibrate,
 } from "@/lib/futureMe";
-
-import { MessageBubble } from "@/components/future-me/MessageBubble";
-import { QuickActionsMenu } from "@/components/future-me/QuickActionsMenu";
 import { TopBar } from "@/components/future-me/TopBar";
+import { MessageBubble } from "@/components/future-me/MessageBubble";
+import { QuickActionsMenu, type QuickActionItem } from "@/components/future-me/QuickActionsMenu";
 
-function InteractiveGlassCard({
-  accent,
-  style,
-  children,
-  className,
-  onClick,
-}: {
-  accent: string;
-  style?: CSSProperties;
-  children: ReactNode;
-  className?: string;
-  onClick?: () => void;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [hover, setHover] = useState({ x: 50, y: 50, dx: 0, dy: 0, active: false });
+type MessageRow = {
+  id: string;
+  role: Role;
+  text: string;
+  created_at: string;
+};
 
-  return (
-    <motion.div
-      ref={ref}
-      className={className}
-      onClick={onClick}
-      onPointerMove={(e) => {
-        const rect = ref.current?.getBoundingClientRect();
-        if (!rect) return;
-        const x = ((e.clientX - rect.left) / rect.width) * 100;
-        const y = ((e.clientY - rect.top) / rect.height) * 100;
-        const dx = (e.clientX - rect.left - rect.width / 2) / rect.width;
-        const dy = (e.clientY - rect.top - rect.height / 2) / rect.height;
-        setHover({ x, y, dx, dy, active: true });
-      }}
-      onPointerLeave={() => setHover({ x: 50, y: 50, dx: 0, dy: 0, active: false })}
-      style={{
-        ...style,
-        position: "relative",
-        overflow: "hidden",
-        transformStyle: "preserve-3d",
-        transform: `perspective(1200px) rotateX(${hover.active ? -hover.dy * 7 : 0}deg) rotateY(${hover.active ? hover.dx * 9 : 0}deg)`,
-      }}
-    >
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          background: `radial-gradient(700px circle at ${hover.x}% ${hover.y}%, ${hexToRgba(accent, 0.18)}, transparent 42%)`,
-          transform: `translate3d(${hover.dx * 14}px, ${hover.dy * 14}px, 0)`,
-          transition: "transform 120ms linear, background 120ms linear",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          opacity: 0.08,
-          backgroundImage: "radial-gradient(rgba(255,255,255,0.9) 0.7px, transparent 0.7px)",
-          backgroundSize: "3px 3px",
-          mixBlendMode: "soft-light",
-        }}
-      />
-      {children}
-    </motion.div>
-  );
+const themeKeywords = {
+  work: ["work", "job", "career", "project", "build", "school", "study", "exam", "code", "app"],
+  relationships: ["friend", "friends", "family", "mother", "father", "sister", "brother", "love", "relationship"],
+  fear: ["fear", "anxious", "anxiety", "worry", "scared", "afraid", "stress", "nervous"],
+  growth: ["grow", "better", "future", "improve", "learn", "progress", "change", "discipline"],
+  freedom: ["free", "freedom", "choice", "independent", "own", "myself", "control"],
+};
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase: SupabaseClient | null =
+  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+
+function searchThemes(messages: Message[]) {
+  const joined = messages
+    .filter((m) => m.role === "me")
+    .map((m) => m.text.toLowerCase())
+    .join(" ");
+
+  const results = Object.entries(themeKeywords).map(([label, keywords]) => {
+    const count = keywords.reduce((sum, keyword) => {
+      const matches = joined.split(keyword).length - 1;
+      return sum + matches;
+    }, 0);
+    return { label, count };
+  });
+
+  return results
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4);
+}
+
+function loadEmailCooldownUntil() {
+  if (typeof window === "undefined") return 0;
+  return Number(window.localStorage.getItem(EMAIL_COOLDOWN_KEY) || "0");
+}
+
+function writeEmailCooldownUntil(ts: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(EMAIL_COOLDOWN_KEY, String(ts));
+}
+
+async function loadCloudState(userId: string) {
+  if (!supabase) return { profile: null as ProfileRow | null, messages: [] as Message[] };
+
+  try {
+    const [profileRes, messagesRes] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("user_id,email,memory_summary,last_seen_at")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabase
+        .from("messages")
+        .select("id,role,text,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true })
+        .limit(120),
+    ]);
+
+    return {
+      profile: (profileRes.data ?? null) as ProfileRow | null,
+      messages: normalizeMessageRows((messagesRes.data ?? []) as MessageRow[]),
+    };
+  } catch {
+    return { profile: null, messages: [] };
+  }
+}
+
+async function saveCloudTurn(user: User, userText: string, assistantText: string, memorySummary: string) {
+  if (!supabase) return;
+
+  const now = new Date().toISOString();
+
+  try {
+    const insertRes = await supabase.from("messages").insert([
+      { user_id: user.id, role: "me", text: userText, created_at: now },
+      { user_id: user.id, role: "future me", text: assistantText, created_at: now },
+    ]);
+    if (insertRes.error) console.error(insertRes.error);
+
+    const profileRes = await supabase.from("profiles").upsert({
+      user_id: user.id,
+      email: user.email ?? null,
+      memory_summary: memorySummary,
+      last_seen_at: now,
+    });
+    if (profileRes.error) console.error(profileRes.error);
+  } catch (error) {
+    console.error("Failed to save cloud turn", error);
+  }
+}
+
+async function callMemorySearch(query: string, userId: string, email?: string | null) {
+  try {
+    const res = await fetch("/api/memory/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        userId,
+        email,
+        limit: 6,
+      }),
+    });
+
+    if (!res.ok) return [];
+    const data = await res.json().catch(() => ({}));
+    const memories = Array.isArray(data?.memories) ? data.memories : [];
+    return memories
+      .map((item: unknown) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          const obj = item as Record<string, unknown>;
+          return String(obj.text ?? obj.summary ?? obj.content ?? "");
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+async function ingestMemory(user: User, text: string, kind: "user" | "assistant" | "summary") {
+  try {
+    await fetch("/api/memory/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: user.id,
+        email: user.email ?? null,
+        kind,
+        text,
+      }),
+    });
+  } catch {
+    // optional backend
+  }
 }
 
 function createStyles(
@@ -201,74 +297,6 @@ function createStyles(
       border: panelBorder,
       boxShadow: "0 24px 64px rgba(0,0,0,0.34)",
       backdropFilter: "blur(30px) saturate(160%)",
-    },
-    topTitle: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: 2,
-      textAlign: "center",
-      flex: 1,
-      minWidth: 0,
-    },
-    brand: {
-      fontSize: mobile ? 18 : 20,
-      fontWeight: 900,
-      letterSpacing: "-0.04em",
-      lineHeight: 1.05,
-      color: textMain,
-    },
-    brandSub: {
-      fontSize: 12,
-      color: "rgba(59, 198, 161, 0.95)",
-      maxWidth: 260,
-      whiteSpace: "nowrap",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      fontWeight: 700,
-    },
-    tabSwitcher: {
-      display: "flex",
-      gap: 8,
-      flexWrap: "wrap",
-      padding: 4,
-      borderRadius: 999,
-      background: "rgba(255,255,255,0.04)",
-      border: panelBorder,
-      marginTop: 6,
-    },
-    tabButton: {
-      border: 0,
-      borderRadius: 999,
-      padding: "10px 14px",
-      background: "transparent",
-      color: textMuted,
-      fontWeight: 800,
-      fontSize: 12,
-    },
-    tabButtonActive: {
-      border: 0,
-      borderRadius: 999,
-      padding: "10px 14px",
-      background: "rgba(255,255,255,0.12)",
-      color: textMain,
-      fontWeight: 900,
-      fontSize: 12,
-      boxShadow: `0 0 0 1px ${hexToRgba(accent, 0.12)} inset`,
-    },
-    iconButton: {
-      width: 46,
-      height: 46,
-      borderRadius: 16,
-      border: panelBorder,
-      background: "rgba(255,255,255,0.05)",
-      color: textMain,
-      display: "grid",
-      placeItems: "center",
-      cursor: "pointer",
-      boxShadow: "0 8px 16px rgba(0,0,0,0.22)",
-      fontSize: 18,
-      fontWeight: 900,
     },
     hero: {
       borderRadius: 30,
@@ -983,17 +1011,6 @@ function createStyles(
       boxShadow: "0 8px 20px rgba(0,0,0,0.18)",
       cursor: "pointer",
     },
-    focusModeToggleBtn: {
-      position: "absolute",
-      right: 18,
-      top: 18,
-      background: "transparent",
-      border: "none",
-      color: textMuted,
-      cursor: "pointer",
-      fontSize: 18,
-      zIndex: 2,
-    },
     helper: {
       padding: "0 16px 16px",
       fontSize: 12,
@@ -1427,7 +1444,112 @@ function createStyles(
       display: "flex",
       justifyContent: "flex-end",
     },
+    memoryJourney: {
+      borderRadius: 26,
+      padding: 18,
+      background: glassBg,
+      border: panelBorder,
+      boxShadow: "0 24px 64px rgba(0,0,0,0.34)",
+      backdropFilter: "blur(34px) saturate(150%)",
+      display: "grid",
+      gap: 14,
+    },
+    journeyTrack: {
+      position: "relative",
+      minHeight: 180,
+      borderRadius: 22,
+      background: "rgba(0,0,0,0.22)",
+      overflow: "hidden",
+      border: "1px solid rgba(255,255,255,0.06)",
+    },
+    journeyGlow: {
+      position: "absolute",
+      inset: 0,
+      background: `radial-gradient(circle at 50% 60%, ${hexToRgba(accent, 0.22)}, transparent 52%)`,
+      pointerEvents: "none",
+    },
+    journeyPath: {
+      position: "absolute",
+      inset: "20px 18px",
+      borderRadius: 999,
+      border: "1px dashed rgba(255,255,255,0.15)",
+    },
+    journeyNode: {
+      position: "absolute",
+      width: 18,
+      height: 18,
+      borderRadius: 999,
+      background: accent,
+      boxShadow: `0 0 18px ${hexToRgba(accent, 0.35)}`,
+    },
   };
+}
+
+function InteractiveGlassCard({
+  accent,
+  style,
+  children,
+  className,
+  onClick,
+}: {
+  accent: string;
+  style?: CSSProperties;
+  children: React.ReactNode;
+  className?: string;
+  onClick?: () => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [hover, setHover] = useState({ x: 50, y: 50, dx: 0, dy: 0, active: false });
+
+  return (
+    <motion.div
+      ref={ref}
+      className={className}
+      onClick={onClick}
+      onPointerMove={(e) => {
+        const rect = ref.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        const dx = (e.clientX - rect.left - rect.width / 2) / rect.width;
+        const dy = (e.clientY - rect.top - rect.height / 2) / rect.height;
+        setHover({ x, y, dx, dy, active: true });
+      }}
+      onPointerLeave={() => setHover({ x: 50, y: 50, dx: 0, dy: 0, active: false })}
+      style={{
+        ...style,
+        position: "relative",
+        overflow: "hidden",
+        transformStyle: "preserve-3d",
+        transform: `perspective(1200px) rotateX(${hover.active ? -hover.dy * 7 : 0}deg) rotateY(${hover.active ? hover.dx * 9 : 0}deg)`,
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          background: `radial-gradient(700px circle at ${hover.x}% ${hover.y}%, ${hexToRgba(accent, 0.18)}, transparent 42%)`,
+          transform: `translate3d(${hover.dx * 14}px, ${hover.dy * 14}px, 0)`,
+          transition: "transform 120ms linear, background 120ms linear",
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          opacity: 0.08,
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.9) 0.7px, transparent 0.7px)",
+          backgroundSize: "3px 3px",
+          mixBlendMode: "soft-light",
+        }}
+      />
+      {children}
+    </motion.div>
+  );
 }
 
 export default function FutureMeClient() {
@@ -1453,10 +1575,17 @@ export default function FutureMeClient() {
   const [activeTab, setActiveTab] = useState<ViewTab>("chat");
   const [retrievedMemories, setRetrievedMemories] = useState<string[]>([]);
   const [voiceListening, setVoiceListening] = useState(false);
-  const [contextMenu, setContextMenu] = useState<ContextMenuData | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    messageId: string;
+    text: string;
+    role: Role;
+    x: number;
+    y: number;
+  } | null>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [isFocusMode, setIsFocusMode] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -1464,7 +1593,12 @@ export default function FutureMeClient() {
   const recognitionRef = useRef<any>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const accentMap: Record<Mood, string> = useMemo(() => ({ calm: "#60a5fa", honest: "#fb923c", direct: "#34d399", wise: "#a78bfa" }), []);
+  const accentMap: Record<Mood, string> = {
+    calm: "#60a5fa",
+    honest: "#fb923c",
+    direct: "#34d399",
+    wise: "#a78bfa",
+  };
   const accent = accentMap[mood];
 
   const remainingToday = usage.date === todayKey() ? Math.max(0, FREE_LIMIT - usage.count) : FREE_LIMIT;
@@ -1476,11 +1610,6 @@ export default function FutureMeClient() {
   const composerPlaceholder = moodPlaceholders[mood];
   const memoryBadge = memoryPulse ? "memory updated" : user ? "cloud sync on" : "private draft";
   const insights = useMemo(() => buildInsights(messages), [messages]);
-
-  const styles = useMemo(
-    () => createStyles(mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab),
-    [mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab]
-  );
 
   const contextMenuPosition = useMemo(() => {
     if (!contextMenu) return null;
@@ -1501,12 +1630,16 @@ export default function FutureMeClient() {
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  useEffect(() => { textareaRef.current?.focus(); }, []);
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
 
   useEffect(() => {
-    const initialCooldown = readEmailCooldownUntil();
+    const initialCooldown = loadEmailCooldownUntil();
     setEmailCooldownUntilState(initialCooldown);
-    const timer = window.setInterval(() => setEmailCooldownUntilState(readEmailCooldownUntil()), 1000);
+    const timer = window.setInterval(() => {
+      setEmailCooldownUntilState(loadEmailCooldownUntil());
+    }, 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -1514,16 +1647,23 @@ export default function FutureMeClient() {
     try {
       const draft = loadDraft(STORAGE_KEY);
       if (draft) {
-        if (Array.isArray(draft.messages) && draft.messages.length > 0) setMessages(draft.messages.slice(-MAX_MESSAGES));
+        if (Array.isArray(draft.messages) && draft.messages.length > 0) {
+          setMessages(draft.messages.slice(-MAX_MESSAGES));
+        }
         if (typeof draft.input === "string") setInput(draft.input);
-        if (draft.mood && ["calm", "honest", "direct", "wise"].includes(draft.mood)) setMood(draft.mood as Mood);
+        if (draft.mood && ["calm", "honest", "direct", "wise"].includes(draft.mood)) {
+          setMood(draft.mood as Mood);
+        }
         if (typeof draft.isPro === "boolean") setIsPro(draft.isPro);
         if (draft.usage) setUsage(normalizeUsage(draft.usage));
       }
+
       const savedEmail = window.localStorage.getItem("future-me-email") || "";
       if (savedEmail) setEmailInput(savedEmail);
+
       const savedMemory = window.localStorage.getItem(memoryKey) || "";
       if (savedMemory) setMemorySummary(savedMemory);
+
       const params = new URLSearchParams(window.location.search);
       if (params.get("pro") === "1" || params.get("pro") === "true") {
         setIsPro(true);
@@ -1531,69 +1671,103 @@ export default function FutureMeClient() {
         const nextUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ""}`;
         window.history.replaceState({}, "", nextUrl);
       }
-    } catch {} finally { setHydrated(true); }
+    } catch {
+      // ignore
+    } finally {
+      setHydrated(true);
+    }
   }, [memoryKey]);
 
   useEffect(() => {
     if (!hydrated) return;
+
     const timeoutId = window.setTimeout(() => {
-      saveDraft(draftKey, { messages: messages.slice(-MAX_MESSAGES), input, mood, isPro, usage });
+      saveDraft(draftKey, {
+        messages: messages.slice(-MAX_MESSAGES),
+        input,
+        mood,
+        isPro,
+        usage,
+      });
       window.localStorage.setItem(memoryKey, memorySummary);
     }, 220);
+
     return () => window.clearTimeout(timeoutId);
   }, [draftKey, hydrated, input, isPro, messages, mood, memoryKey, memorySummary, usage]);
 
   useEffect(() => {
     const derived = buildMemorySummary(messages);
     setMemorySummary(derived);
-    if (user?.email) window.localStorage.setItem(memoryKey, derived);
+    if (user?.email) {
+      window.localStorage.setItem(memoryKey, derived);
+    }
   }, [messages, memoryKey, user?.email]);
 
   useEffect(() => {
-    if (input.length > 120 && !isFocusMode && !window.sessionStorage.getItem("dismissedFocus")) {
-      setIsFocusMode(true);
-    }
-  }, [input, isFocusMode]);
-
-  useEffect(() => {
-    if (!showScrollBottom && bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, loading, showScrollBottom]);
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading]);
 
   useEffect(() => {
     document.body.style.overflow = menuOpen || paywallOpen || showSaveSheet || contextMenu || isFocusMode ? "hidden" : "auto";
-    return () => { document.body.style.overflow = "auto"; };
+    return () => {
+      document.body.style.overflow = "auto";
+    };
   }, [menuOpen, paywallOpen, showSaveSheet, contextMenu, isFocusMode]);
 
   useEffect(() => {
     if (!supabase) return;
+
     const hydrate = async () => {
       const { data } = await supabase.auth.getSession();
       await syncSession(data.session?.user ?? null);
     };
+
     void hydrate();
+
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT") { void syncSession(null); return; }
-      setTimeout(() => { void syncSession(session?.user ?? null); }, 0);
+      if (event === "SIGNED_OUT") {
+        void syncSession(null);
+        return;
+      }
+
+      setTimeout(() => {
+        void syncSession(session?.user ?? null);
+      }, 0);
     });
+
     return () => authListener.subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const styles = useMemo(
+    () => createStyles(mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab),
+    [mobile, isPro, hasConversationStarted, loading, mood, accent, activeTab]
+  );
 
   const incrementUsage = useCallback(() => {
     setUsage((prevUsage) => {
       const today = todayKey();
-      return prevUsage.date === today ? { date: today, count: prevUsage.count + 1 } : { date: today, count: 1 };
+      return prevUsage.date === today
+        ? { date: today, count: prevUsage.count + 1 }
+        : { date: today, count: 1 };
     });
   }, []);
 
   async function syncSession(nextUser: User | null) {
     setUser(nextUser);
+
     if (!nextUser) {
       const guestDraft = loadDraft(STORAGE_KEY);
       if (guestDraft) {
-        if (Array.isArray(guestDraft.messages) && guestDraft.messages.length > 0) setMessages(guestDraft.messages.slice(-MAX_MESSAGES));
-        else setMessages([WELCOME_MESSAGE]);
+        if (Array.isArray(guestDraft.messages) && guestDraft.messages.length > 0) {
+          setMessages(guestDraft.messages.slice(-MAX_MESSAGES));
+        } else {
+          setMessages([WELCOME_MESSAGE]);
+        }
         if (typeof guestDraft.input === "string") setInput(guestDraft.input);
-        if (guestDraft.mood && ["calm", "honest", "direct", "wise"].includes(guestDraft.mood)) setMood(guestDraft.mood as Mood);
+        if (guestDraft.mood && ["calm", "honest", "direct", "wise"].includes(guestDraft.mood)) {
+          setMood(guestDraft.mood as Mood);
+        }
         if (typeof guestDraft.isPro === "boolean") setIsPro(guestDraft.isPro);
         if (guestDraft.usage) setUsage(normalizeUsage(guestDraft.usage));
       }
@@ -1602,14 +1776,23 @@ export default function FutureMeClient() {
       setEmailInput("");
       return;
     }
+
     setEmailInput(nextUser.email ?? "");
+
     const { profile, messages: cloudMessages } = await loadCloudState(nextUser.id);
-    if (cloudMessages.length > 0) setMessages(cloudMessages.slice(-MAX_MESSAGES));
-    const cloudMemory = profile?.memory_summary?.trim() || buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
+    if (cloudMessages.length > 0) {
+      setMessages(cloudMessages.slice(-MAX_MESSAGES));
+    }
+
+    const cloudMemory =
+      profile?.memory_summary?.trim() ||
+      buildMemorySummary(cloudMessages.length > 0 ? cloudMessages : messages);
+
     if (cloudMemory) {
       setMemorySummary(cloudMemory);
       window.localStorage.setItem(profileToMemoryKey(nextUser.email), cloudMemory);
     }
+
     if (cloudMessages.length > 0) {
       const lastQuery = messages.filter((m) => m.role === "me").slice(-1)[0]?.text ?? "";
       const longTerm = await callMemorySearch(lastQuery, nextUser.id, nextUser.email);
@@ -1618,15 +1801,36 @@ export default function FutureMeClient() {
   }
 
   async function signInWithEmail() {
-    if (!supabase) { setLoginStatus("Supabase env vars are missing."); return; }
+    if (!supabase) {
+      setLoginStatus("Supabase env vars are missing.");
+      return;
+    }
+
     const email = emailInput.trim().toLowerCase();
     if (!email) return;
-    const cooldownUntil = readEmailCooldownUntil();
-    if (Date.now() < cooldownUntil) { setLoginStatus(`Wait ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s and try again.`); return; }
+
+    const cooldownUntil = loadEmailCooldownUntil();
+    if (Date.now() < cooldownUntil) {
+      setLoginStatus(`Wait ${Math.ceil((cooldownUntil - Date.now()) / 1000)}s and try again.`);
+      return;
+    }
+
     setSendingEmail(true);
     setLoginStatus("Sending magic link...");
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/` } });
-    if (error) { setLoginStatus(error.message); setSendingEmail(false); return; }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/`,
+      },
+    });
+
+    if (error) {
+      setLoginStatus(error.message);
+      setSendingEmail(false);
+      return;
+    }
+
     const until = Date.now() + EMAIL_COOLDOWN_MS;
     writeEmailCooldownUntil(until);
     setEmailCooldownUntilState(until);
@@ -1641,40 +1845,107 @@ export default function FutureMeClient() {
   }
 
   async function copyMessage(text: string, id: string) {
-    try { await navigator.clipboard.writeText(text); setCopiedId(id); window.setTimeout(() => setCopiedId(null), 1200); setContextMenu(null); } catch {}
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId(null), 1200);
+      setContextMenu(null);
+    } catch {
+      // ignore
+    }
   }
 
   async function shareMessage(text: string) {
-    try { if (navigator.share) await navigator.share({ text }); else if (navigator.clipboard) await navigator.clipboard.writeText(text); setContextMenu(null); } catch {}
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      }
+      setContextMenu(null);
+    } catch {
+      // ignore
+    }
   }
 
   function deleteMessage(id: string) {
     if (id === "welcome") return;
-    setMessages((prev) => { const next = prev.filter((m) => m.id !== id); return next.length > 0 ? next : [WELCOME_MESSAGE]; });
+    setMessages((prev) => {
+      const next = prev.filter((m) => m.id !== id);
+      return next.length > 0 ? next : [WELCOME_MESSAGE];
+    });
     setContextMenu(null);
   }
 
-  const handleDeepen = useCallback(() => {
-    if (!contextMenu?.text) return;
-    setInput(`Deepen this thought: "${contextMenu.text}"\n\n`);
+  function deepenThought(text: string) {
+    setInput(`Deepen this thought: "${text}"\n\n`);
     setContextMenu(null);
     setIsFocusMode(true);
     setTimeout(() => textareaRef.current?.focus(), 0);
-  }, [contextMenu]);
+  }
+
+  function speakMessage(message: Message) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const synth = window.speechSynthesis;
+
+    if (speakingId === message.id) {
+      synth.cancel();
+      setSpeakingId(null);
+      return;
+    }
+
+    synth.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(message.text);
+    utterance.rate = 0.96;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    utterance.lang = looksFinnish(message.text) ? "fi-FI" : "en-US";
+
+    utterance.onend = () => setSpeakingId(null);
+    utterance.onerror = () => setSpeakingId(null);
+
+    setSpeakingId(message.id);
+    synth.speak(utterance);
+  }
 
   async function startVoice() {
-    if (voiceListening) { recognitionRef.current?.stop?.(); return; }
+    if (voiceListening) {
+      recognitionRef.current?.stop?.();
+      return;
+    }
+
     const recognition = createSpeechRecognition();
-    if (!recognition) { setLoginStatus("Voice input is not supported in this browser."); return; }
+    if (!recognition) {
+      setLoginStatus("Voice input is not supported in this browser.");
+      return;
+    }
+
     recognition.lang = "en-US";
     recognition.interimResults = true;
     recognition.continuous = false;
+
     recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results).map((result: any) => result[0]?.transcript ?? "").join("").trim();
-      if (transcript) setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0]?.transcript ?? "")
+        .join("")
+        .trim();
+
+      if (transcript) {
+        setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+      }
     };
-    recognition.onend = () => setVoiceListening(false);
-    recognition.onerror = () => { setVoiceListening(false); setLoginStatus("Voice input stopped."); };
+
+    recognition.onend = () => {
+      setVoiceListening(false);
+    };
+
+    recognition.onerror = () => {
+      setVoiceListening(false);
+      setLoginStatus("Voice input stopped.");
+    };
+
     recognitionRef.current = recognition;
     setVoiceListening(true);
     vibrate(10);
@@ -1695,15 +1966,26 @@ export default function FutureMeClient() {
 
   async function sendMessage() {
     if (loading) return;
+
     const trimmed = input.trim();
     if (!trimmed) return;
-    if (!isPro && remainingToday <= 0) { setPaywallOpen(true); return; }
+
+    if (!isPro && remainingToday <= 0) {
+      setPaywallOpen(true);
+      return;
+    }
 
     vibrate([12, 20, 12]);
     setIsFocusMode(false);
 
     const now = new Date().toISOString();
-    const userMessage: Message = { id: uid(), role: "me", text: trimmed, time: formatClock(), createdAt: now };
+    const userMessage: Message = {
+      id: uid(),
+      role: "me",
+      text: trimmed,
+      time: formatClock(),
+      createdAt: now,
+    };
 
     const nextMessages = [...messages, userMessage].slice(-MAX_MESSAGES);
     const nextMemorySummary = buildMemorySummary(nextMessages);
@@ -1712,26 +1994,53 @@ export default function FutureMeClient() {
     setInput("");
     setLoading(true);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
+
     if (!isPro) incrementUsage();
 
     const startedAt = Date.now();
-    const memoryPrompt = buildMemoryPrompt(nextMessages, mood, nextMemorySummary);
+    const timeContext = buildTimeContext(new Date());
+    const memoryPrompt = buildMemoryPrompt(nextMessages, mood, nextMemorySummary, new Date());
     const longTermMemories = await searchLongTerm(trimmed);
     setRetrievedMemories(longTermMemories);
 
     try {
       const response = await fetch("/api/generate", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages, mood, isPro, memorySummary: nextMemorySummary, memory: memoryPrompt, ragContext: longTermMemories.join("\n"), longTermMemories }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: nextMessages,
+          mood,
+          isPro,
+          memorySummary: nextMemorySummary,
+          memory: memoryPrompt,
+          timeContext,
+          ragContext: longTermMemories.join("\n"),
+          longTermMemories,
+        }),
       });
+
       const data = await response.json().catch(() => ({}));
-      const lastAssistant = [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
-      const replyText = typeof data?.reply === "string" && data.reply.trim() ? data.reply.trim() : fallbackReply(trimmed, mood, isPro, lastAssistant);
+      const lastAssistant =
+        [...messages].reverse().find((m) => m.role === "future me")?.text ?? "";
+
+      const replyText =
+        typeof data?.reply === "string" && data.reply.trim()
+          ? data.reply.trim()
+          : fallbackReply(trimmed, mood, isPro, lastAssistant);
 
       const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
-      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
 
-      const assistantMessage: Message = { id: uid(), role: "future me", text: replyText, time: formatClock(), createdAt: new Date().toISOString() };
+      const assistantMessage: Message = {
+        id: uid(),
+        role: "future me",
+        text: replyText,
+        time: formatClock(),
+        createdAt: new Date().toISOString(),
+      };
+
       const finalMessages = [...nextMessages, assistantMessage].slice(-MAX_MESSAGES);
       setMessages(finalMessages);
       setMemorySummary(buildMemorySummary(finalMessages));
@@ -1746,15 +2055,28 @@ export default function FutureMeClient() {
       }
     } catch {
       const remaining = Math.max(0, MIN_REPLY_DELAY_MS - (Date.now() - startedAt));
-      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+
       const replyText = fallbackReply(trimmed, mood, isPro);
-      const assistantMessage: Message = { id: uid(), role: "future me", text: replyText, time: formatClock(), createdAt: new Date().toISOString() };
+      const assistantMessage: Message = {
+        id: uid(),
+        role: "future me",
+        text: replyText,
+        time: formatClock(),
+        createdAt: new Date().toISOString(),
+      };
+
       const finalMessages = [...nextMessages, assistantMessage].slice(-MAX_MESSAGES);
       setMessages(finalMessages);
       setMemorySummary(buildMemorySummary(finalMessages));
       setMemoryPulse(true);
       window.setTimeout(() => setMemoryPulse(false), 1400);
-      if (user) await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
+
+      if (user) {
+        await saveCloudTurn(user, trimmed, replyText, nextMemorySummary);
+      }
     } finally {
       setLoading(false);
       setTimeout(() => textareaRef.current?.focus(), 0);
@@ -1783,51 +2105,173 @@ export default function FutureMeClient() {
   }
 
   async function shareConversation() {
-    const transcript = messages.map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`).join("\n\n");
-    try { if (navigator.share) await navigator.share({ title: "Future Me", text: transcript }); else if (navigator.clipboard) await navigator.clipboard.writeText(transcript); } catch {}
+    const transcript = messages
+      .map((m) => `${m.role === "me" ? "You" : "Future Me"}: ${m.text}`)
+      .join("\n\n");
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Future Me",
+          text: transcript,
+        });
+        return;
+      }
+
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(transcript);
+      }
+    } catch {
+      // ignore
+    }
   }
 
-  async function signOut() { if (!supabase) return; await supabase.auth.signOut(); setMenuOpen(false); }
-  function openUpgrade() { setMenuOpen(false); setPaywallOpen(true); }
+  async function signOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setMenuOpen(false);
+  }
+
+  function openUpgrade() {
+    setMenuOpen(false);
+    setPaywallOpen(true);
+  }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
+    }
   };
+
   const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    if (!isFocusMode) { e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`; }
+    e.target.style.height = "auto";
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
   };
 
   const openMessageMenu = (message: Message, x: number, y: number) => {
-    setContextMenu({ messageId: message.id, text: message.text, role: message.role, x, y });
+    setContextMenu({
+      messageId: message.id,
+      text: message.text,
+      role: message.role,
+      x,
+      y,
+    });
   };
+
   const handleLongPressStart = (message: Message) => (e: React.PointerEvent<HTMLElement>) => {
     if (e.pointerType === "mouse") return;
-    longPressTimerRef.current = setTimeout(() => { vibrate(15); openMessageMenu(message, e.clientX, e.clientY); }, 450);
+    longPressTimerRef.current = setTimeout(() => {
+      vibrate(15);
+      openMessageMenu(message, e.clientX, e.clientY);
+    }, 450);
   };
+
   const handleLongPressEnd = () => {
-    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
   };
+
   const handleThreadScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     const distanceToBottom = scrollHeight - scrollTop - clientHeight;
     setShowScrollBottom(distanceToBottom > 120);
   };
 
+  const topMenuItems: QuickActionItem[] = [
+    { label: "Start over", onClick: startOver },
+    { label: "Share conversation", onClick: shareConversation },
+    { label: "Upgrade to Pro", onClick: openUpgrade },
+    ...(user ? [{ label: "Sign out", onClick: () => void signOut() }] : []),
+    { label: "Close", onClick: () => setMenuOpen(false) },
+  ];
+
+  const messageMenuItems: QuickActionItem[] = contextMenu
+    ? [
+        { label: "Copy text", onClick: () => void copyMessage(contextMenu.text, contextMenu.messageId) },
+        { label: "Share", onClick: () => void shareMessage(contextMenu.text) },
+        { label: "Deepen this thought", onClick: () => deepenThought(contextMenu.text) },
+        ...(contextMenu.role === "me"
+          ? [{ label: "Delete", onClick: () => deleteMessage(contextMenu.messageId), tone: "danger" as const }]
+          : []),
+      ]
+    : [];
+
   return (
     <main style={styles.page}>
       <style jsx global>{`
-        :root { color-scheme: dark; }
-        * { box-sizing: border-box; }
-        html, body { margin: 0; width: 100%; min-height: 100%; height: auto; background-color: #09090d; color: #ffffff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: hidden; overflow-y: auto; }
-        button, textarea { font: inherit; }
-        button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-        textarea { outline: none; }
-        ::selection { background: rgba(255,255,255,0.18); color: #ffffff; }
-        ::-webkit-scrollbar { width: 0; height: 0; }
-        @keyframes floatIn { from { opacity: 0; transform: translateY(10px) scale(0.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.8; } }
+        :root {
+          color-scheme: dark;
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        html,
+        body {
+          margin: 0;
+          width: 100%;
+          min-height: 100%;
+          height: auto;
+          background-color: #09090d;
+          color: #ffffff;
+          font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          overflow-x: hidden;
+          overflow-y: auto;
+        }
+
+        button,
+        textarea {
+          font: inherit;
+        }
+
+        button {
+          cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        textarea {
+          outline: none;
+        }
+
+        ::selection {
+          background: rgba(255, 255, 255, 0.18);
+          color: #ffffff;
+        }
+
+        ::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+        }
+
+        @keyframes floatIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.99);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes pulse {
+          0%,
+          100% {
+            opacity: 0.3;
+          }
+          50% {
+            opacity: 0.8;
+          }
+        }
       `}</style>
+
       <div style={styles.noiseOverlay} />
       <div style={styles.glowA} />
       <div style={styles.glowB} />
@@ -1836,137 +2280,366 @@ export default function FutureMeClient() {
       {menuOpen && <div style={styles.sheetBackdrop} onClick={() => setMenuOpen(false)} />}
       {paywallOpen && <div style={styles.paywallBackdrop} onClick={() => setPaywallOpen(false)} />}
       {contextMenu && (
-        <div style={{ ...styles.sheetBackdrop, background: "transparent", zIndex: 90 }} onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
+        <div
+          style={{
+            ...styles.sheetBackdrop,
+            background: "transparent",
+            zIndex: 90,
+          }}
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu(null);
+          }}
+        />
       )}
 
-      {contextMenu && contextMenuPosition && (
-        <QuickActionsMenu
-          styles={styles}
-          position={contextMenuPosition}
-          onCopy={() => copyMessage(contextMenu.text, contextMenu.messageId)}
-          onShare={() => shareMessage(contextMenu.text)}
-          onDeepen={handleDeepen}
-          onDelete={() => deleteMessage(contextMenu.messageId)}
-          canDelete={contextMenu.role === "me"}
-        />
+      <QuickActionsMenu
+        open={menuOpen}
+        mode="sheet"
+        title="Future Me"
+        subtitle="Quick actions"
+        items={topMenuItems}
+        onClose={() => setMenuOpen(false)}
+      />
+
+      <QuickActionsMenu
+        open={Boolean(contextMenu && contextMenuPosition)}
+        mode="context"
+        title="Message"
+        subtitle="Actions"
+        items={messageMenuItems}
+        onClose={() => setContextMenu(null)}
+        position={contextMenuPosition ?? { left: 16, top: 16 }}
+      />
+
+      {showSaveSheet && (
+        <aside style={styles.sheet}>
+          <div>
+            <div style={styles.sheetTitle}>Save with email</div>
+            <div style={styles.sheetSub}>
+              Enter your email to send yourself a magic link and save this conversation.
+            </div>
+          </div>
+
+          <input
+            style={styles.sheetInput}
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="you@email.com"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void signInWithEmail();
+              }
+            }}
+          />
+
+          <button
+            style={{ ...styles.sheetPrimary, opacity: emailCooldownUntil > Date.now() || sendingEmail ? 0.6 : 1 }}
+            onClick={() => void signInWithEmail()}
+            disabled={sendingEmail || emailCooldownUntil > Date.now()}
+          >
+            {sendingEmail
+              ? "Sending..."
+              : emailCooldownUntil > Date.now()
+                ? `Wait ${Math.ceil((emailCooldownUntil - Date.now()) / 1000)}s`
+                : "Send magic link"}
+          </button>
+
+          <button style={styles.sheetSecondary} onClick={() => setShowSaveSheet(false)}>
+            Close
+          </button>
+
+          {loginStatus ? <div style={styles.sheetHint}>{loginStatus}</div> : null}
+        </aside>
+      )}
+
+      {paywallOpen && (
+        <aside style={styles.paywall}>
+          <div style={styles.paywallHeader}>
+            <div style={styles.paywallTitle}>Future Me Pro</div>
+            <div style={styles.paywallSub}>
+              More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your
+              story.
+            </div>
+          </div>
+
+          <div style={styles.freeTag}>{isPro ? "Pro active" : `Free: ${remainingToday} left today`}</div>
+
+          <div style={styles.featureCard}>
+            <div style={styles.paywallSub}>What changes in Pro</div>
+            <div style={styles.featureList}>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Longer memory and fewer generic replies.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Mood modes that actually change the tone.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Unlimited messages and longer conversations.
+              </div>
+              <div style={styles.featureItem}>
+                <span style={styles.featureDot} />
+                Better sharing and a more personal feel.
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.paywallButtons}>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.proButton} onClick={() => setIsPro(true)}>
+              Unlock demo Pro
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.ghostButton} onClick={shareConversation}>
+              Share conversation
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>
+              Not now
+            </motion.button>
+          </div>
+
+          <div style={styles.hintLine}>
+            After you add real checkout, redirect back with <code>?pro=1</code> and the app will unlock automatically.
+          </div>
+        </aside>
       )}
 
       {isFocusMode && (
         <div style={styles.focusModeOverlay}>
           <div style={styles.focusModeHeader}>
             <span style={styles.focusModeTitle}>Focus Mode</span>
-            <button style={styles.focusModeClose} onClick={() => { setIsFocusMode(false); window.sessionStorage.setItem("dismissedFocus", "true"); }}>✕</button>
+            <button
+              style={styles.focusModeClose}
+              onClick={() => setIsFocusMode(false)}
+            >
+              ✕
+            </button>
           </div>
-          <textarea autoFocus style={styles.focusModeTextarea} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Keep writing. No distractions." />
+
+          <textarea
+            autoFocus
+            style={styles.focusModeTextarea}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Keep writing. No distractions."
+          />
+
           <div style={styles.focusModeFooter}>
-            <button style={{ ...styles.sendButton, minWidth: 150 }} onClick={() => void sendMessage()} disabled={loading}>{loading ? "Thinking..." : "Send"}</button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.96 }}
+              style={{ ...styles.sendButton, minWidth: 150 }}
+              onClick={() => void sendMessage()}
+              disabled={loading}
+            >
+              {loading ? "Thinking..." : "Send"}
+            </motion.button>
           </div>
         </div>
       )}
 
-      {showSaveSheet && (
-        <aside style={styles.sheet}>
-          <div><div style={styles.sheetTitle}>Save with email</div><div style={styles.sheetSub}>Enter your email to send yourself a magic link and save this conversation.</div></div>
-          <input style={styles.sheetInput} type="email" inputMode="email" autoComplete="email" placeholder="you@email.com" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void signInWithEmail(); } }} />
-          <button style={{ ...styles.sheetPrimary, opacity: emailCooldownUntil > Date.now() || sendingEmail ? 0.6 : 1 }} onClick={() => void signInWithEmail()} disabled={sendingEmail || emailCooldownUntil > Date.now()}>{sendingEmail ? "Sending..." : emailCooldownUntil > Date.now() ? `Wait ${Math.ceil((emailCooldownUntil - Date.now()) / 1000)}s` : "Send magic link"}</button>
-          <button style={styles.sheetSecondary} onClick={() => setShowSaveSheet(false)}>Close</button>
-          {loginStatus ? <div style={styles.sheetHint}>{loginStatus}</div> : null}
-        </aside>
-      )}
-
-      {menuOpen && (
-        <aside style={styles.sheet}>
-          <div><div style={styles.sheetTitle}>Future Me</div><div style={styles.sheetSub}>Quick actions</div></div>
-          <div style={styles.sheetGroup}>
-            <button style={styles.sheetButton} onClick={startOver}>Start over</button>
-            <button style={styles.sheetButton} onClick={shareConversation}>Share conversation</button>
-            <button style={styles.sheetButton} onClick={openUpgrade}>Upgrade to Pro</button>
-            {user ? <button style={styles.sheetButton} onClick={() => void signOut()}>Sign out</button> : null}
-            <button style={styles.sheetButton} onClick={() => setMenuOpen(false)}>Close</button>
-          </div>
-        </aside>
-      )}
-
-      {paywallOpen && (
-        <aside style={styles.paywall}>
-          <div style={styles.paywallHeader}><div style={styles.paywallTitle}>Future Me Pro</div><div style={styles.paywallSub}>More memory. Deeper replies. Longer conversations. The app starts to feel like it actually knows your story.</div></div>
-          <div style={styles.freeTag}>{isPro ? "Pro active" : `Free: ${remainingToday} left today`}</div>
-          <div style={styles.featureCard}>
-            <div style={styles.paywallSub}>What changes in Pro</div>
-            <div style={styles.featureList}>
-              <div style={styles.featureItem}><span style={styles.featureDot} />Longer memory and fewer generic replies.</div>
-              <div style={styles.featureItem}><span style={styles.featureDot} />Mood modes that actually change the tone.</div>
-              <div style={styles.featureItem}><span style={styles.featureDot} />Unlimited messages and longer conversations.</div>
-              <div style={styles.featureItem}><span style={styles.featureDot} />Better sharing and a more personal feel.</div>
-            </div>
-          </div>
-          <div style={styles.paywallButtons}>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.proButton} onClick={() => setIsPro(true)}>Unlock demo Pro</motion.button>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.ghostButton} onClick={shareConversation}>Share conversation</motion.button>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.ghostButton} onClick={() => setPaywallOpen(false)}>Not now</motion.button>
-          </div>
-          <div style={styles.hintLine}>After you add real checkout, redirect back with <code>?pro=1</code> and the app will unlock automatically.</div>
-        </aside>
-      )}
-
       <div style={styles.shell}>
-        <TopBar styles={styles} activeTab={activeTab} setActiveTab={setActiveTab} user={user} onOpenMenu={() => setMenuOpen(true)} />
+        <TopBar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onMenuOpen={() => setMenuOpen(true)}
+          userLabel={user ? "synced cloud memory" : "guest mode · local memory"}
+          isPro={isPro}
+        />
 
         <AnimatePresence mode="wait" initial={false}>
           {activeTab === "chat" ? (
-            <motion.div key="chat" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.22 }} style={{ display: "grid", gap: 14 }}>
+            <motion.div
+              key="chat"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.22 }}
+              style={{ display: "grid", gap: 14 }}
+            >
               {!hasConversationStarted ? (
                 <InteractiveGlassCard accent={accent} style={styles.hero}>
                   <div style={styles.heroShine} />
-                  <div style={styles.heroTop}><span style={styles.badge}>✦ AI Mode Active</span><span style={styles.badgeAccent}>👑 {isPro ? "Pro" : "Pro Mode"}</span></div>
-                  <div style={styles.heroTitle}>Your future self, <br />but <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>sharper.</span></div>
-                  <div style={styles.heroSub}>A private space where AI remembers, understands your patterns, and tells you what you need to hear.</div>
+                  <div style={styles.heroTop}>
+                    <span style={styles.badge}>✦ AI Mode Active</span>
+                    <span style={styles.badgeAccent}>👑 {isPro ? "Pro" : "Pro Mode"}</span>
+                  </div>
+
+                  <div style={styles.heroTitle}>
+                    Your future self, <br />
+                    but <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>sharper.</span>
+                  </div>
+
+                  <div style={styles.heroSub}>
+                    A private space where AI remembers, understands your patterns, and tells you what you need to hear.
+                  </div>
+
                   <div style={styles.heroMetrics}>
-                    <div style={styles.metricCard}><div style={styles.metricValue}>{remainingToday}</div><div style={styles.metricLabel}>Messages today</div></div>
-                    <div style={styles.metricCard}><div style={styles.metricValue}>{isPro ? "∞" : "Pro Mode"}</div><div style={styles.metricLabel}>{isPro ? "Unlimited" : "Locked"}</div></div>
-                    <div style={styles.metricCard}><div style={styles.metricValue}>{memorySummary ? "3 days" : "—"}</div><div style={styles.metricLabel}>Memory connected</div></div>
+                    <div style={styles.metricCard}>
+                      <div style={styles.metricValue}>{remainingToday}</div>
+                      <div style={styles.metricLabel}>Messages today</div>
+                    </div>
+                    <div style={styles.metricCard}>
+                      <div style={styles.metricValue}>{isPro ? "∞" : "Pro Mode"}</div>
+                      <div style={styles.metricLabel}>{isPro ? "Unlimited" : "Locked"}</div>
+                    </div>
+                    <div style={styles.metricCard}>
+                      <div style={styles.metricValue}>{memorySummary ? "3 days" : "—"}</div>
+                      <div style={styles.metricLabel}>Memory connected</div>
+                    </div>
                   </div>
                 </InteractiveGlassCard>
               ) : (
                 <InteractiveGlassCard accent={accent} style={styles.compactHero}>
-                  <div style={styles.heroTop}><span style={styles.badge}>Conversation in motion</span><span style={styles.badgeAccent}>{memoryBadge}</span></div>
+                  <div style={styles.heroTop}>
+                    <span style={styles.badge}>Conversation in motion</span>
+                    <span style={styles.badgeAccent}>{memoryBadge}</span>
+                  </div>
+
                   <div style={styles.compactTitle}>The thread is alive.</div>
-                  <div style={styles.compactSub}>You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and keep the story moving.</div>
+                  <div style={styles.compactSub}>
+                    You are mid-conversation. The next message will fold into memory, sync to cloud when signed in, and
+                    keep the story moving.
+                  </div>
+
                   <div style={styles.compactActionRow}>
-                    {memorySummary ? <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.compactButton} onClick={continueFromYesterday}>Continue from yesterday</motion.button> : <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.compactButton} onClick={() => textareaRef.current?.focus()}>Keep writing</motion.button>}
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.compactGhost} onClick={() => setMenuOpen(true)}>Open actions</motion.button>
+                    {memorySummary ? (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.96 }}
+                        style={styles.compactButton}
+                        onClick={continueFromYesterday}
+                      >
+                        Continue from yesterday
+                      </motion.button>
+                    ) : (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.96 }}
+                        style={styles.compactButton}
+                        onClick={() => textareaRef.current?.focus()}
+                      >
+                        Keep writing
+                      </motion.button>
+                    )}
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.96 }}
+                      style={styles.compactGhost}
+                      onClick={() => setMenuOpen(true)}
+                    >
+                      Open actions
+                    </motion.button>
                   </div>
                 </InteractiveGlassCard>
               )}
 
               <div style={styles.statusRow}>
-                <span style={styles.pill}><span style={{ width: 8, height: 8, borderRadius: 999, background: isPro ? "#4caf7a" : "#ff9e5e", boxShadow: `0 0 8px ${isPro ? "#4caf7a" : "#ff9e5e"}` }} />{isPro ? "Pro active" : `Free: ${remainingToday} left today`}</span>
+                <span style={styles.pill}>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 999,
+                      background: isPro ? "#4caf7a" : "#ff9e5e",
+                      boxShadow: `0 0 8px ${isPro ? "#4caf7a" : "#ff9e5e"}`,
+                    }}
+                  />
+                  {isPro ? "Pro active" : `Free: ${remainingToday} left today`}
+                </span>
                 <span style={styles.pill}>{user ? "synced to cloud" : "guest mode"}</span>
                 <span style={styles.pill}>{visibleMessageCount} messages</span>
-                {!user ? <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.pillAction} type="button" onClick={() => setShowSaveSheet(true)}>Save with email</motion.button> : <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.pillAction} type="button" onClick={() => setMenuOpen(true)}>Account</motion.button>}
+                {!user ? (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={styles.pillAction}
+                    type="button"
+                    onClick={() => setShowSaveSheet(true)}
+                  >
+                    Save with email
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={styles.pillAction}
+                    type="button"
+                    onClick={() => setMenuOpen(true)}
+                  >
+                    Account
+                  </motion.button>
+                )}
               </div>
 
               <InteractiveGlassCard accent={accent} style={styles.memoryCard}>
                 <div style={styles.memoryGlow} />
-                <div style={styles.memoryHeader}><div style={styles.memoryTitleWrap}><div style={styles.memoryIcon}>🧠</div><div><div style={styles.memoryTitle}>Long-term Memory</div><div style={styles.memoryMeta}>RAG / vector search ready</div></div></div><div style={styles.memoryUpdated}>Updated just now</div></div>
-                <div style={styles.memoryQuote}>“{memorySummary || "You’ve been thinking about direction, fear of wasting time, and wanting to build something real. You value freedom, growth and honesty with yourself."}”</div>
+                <div style={styles.memoryHeader}>
+                  <div style={styles.memoryTitleWrap}>
+                    <div style={styles.memoryIcon}>🧠</div>
+                    <div>
+                      <div style={styles.memoryTitle}>Long-term Memory</div>
+                      <div style={styles.memoryMeta}>RAG / vector search ready</div>
+                    </div>
+                  </div>
+                  <div style={styles.memoryUpdated}>Updated just now</div>
+                </div>
+
+                <div style={styles.memoryQuote}>
+                  “
+                  {memorySummary ||
+                    "You’ve been thinking about direction, fear of wasting time, and wanting to build something real. You value freedom, growth and honesty with yourself."}
+                  ”
+                </div>
+
                 <div style={styles.memoryPills}>
-                  {(retrievedMemories.length > 0 ? retrievedMemories : ["No long-term hits yet.", "Add /api/memory/search and /api/memory/ingest for vector memory."]).slice(0, 3).map((item, idx) => (
-                    <span key={`${item}-${idx}`} style={styles.memoryPill}>{item}</span>
+                  {(retrievedMemories.length > 0
+                    ? retrievedMemories
+                    : [
+                        "No long-term hits yet.",
+                        "Add /api/memory/search and /api/memory/ingest for vector memory.",
+                      ]
+                  ).slice(0, 3).map((item, idx) => (
+                    <span key={`${item}-${idx}`} style={styles.memoryPill}>
+                      {item}
+                    </span>
                   ))}
                 </div>
               </InteractiveGlassCard>
 
               <section>
                 <div style={styles.moodSection}>
-                  <div><div style={styles.moodHeading}>Choose Mood</div><div style={styles.moodSub}>AI adapts tone to your current mindset</div></div>
+                  <div>
+                    <div style={styles.moodHeading}>Choose Mood</div>
+                    <div style={styles.moodSub}>AI adapts tone to your current mindset</div>
+                  </div>
+
                   <div style={styles.moodRow}>
                     {(Object.keys(moodLabels) as Mood[]).map((item) => {
                       const active = item === mood;
                       return (
-                        <motion.button key={item} whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} type="button" onClick={() => { setMood(item); vibrate(8); }} style={active ? styles.moodButtonActive : styles.moodButton}>
+                        <motion.button
+                          key={item}
+                          whileHover={{ y: -2 }}
+                          whileTap={{ scale: 0.96 }}
+                          type="button"
+                          onClick={() => {
+                            setMood(item);
+                            vibrate(8);
+                          }}
+                          style={active ? styles.moodButtonActive : styles.moodButton}
+                        >
                           <div style={{ ...styles.moodGlow, opacity: active ? 1 : 0 }} />
-                          <div style={{ ...styles.moodIcon, color: active ? accent : "rgba(255,255,255,0.58)" }}>{moodIcons[item]}</div>
+                          <div style={{ ...styles.moodIcon, color: active ? accent : "rgba(255,255,255,0.58)" }}>
+                            {moodIcons[item]}
+                          </div>
                           <div style={styles.moodLabel}>{moodLabels[item]}</div>
                           <div style={styles.moodLabelSub}>{active ? moodHints[item] : " "}</div>
                         </motion.button>
@@ -1978,9 +2651,20 @@ export default function FutureMeClient() {
 
               <InteractiveGlassCard accent={accent} style={styles.aiPanel}>
                 <div style={styles.aiHeader}>
-                  <div style={styles.aiHeaderLeft}><div style={styles.avatar}>FM</div><div style={{ minWidth: 0 }}><div style={styles.aiTitle}>Future Me</div><div style={styles.aiSub}>{hasConversationStarted ? "Online & remembering" : "Ready to respond"}</div></div></div>
-                  <div style={styles.liveChip}><span style={styles.liveDot} />{liveLabel}</div>
+                  <div style={styles.aiHeaderLeft}>
+                    <div style={styles.avatar}>FM</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={styles.aiTitle}>Future Me</div>
+                      <div style={styles.aiSub}>{hasConversationStarted ? "Online & remembering" : "Ready to respond"}</div>
+                    </div>
+                  </div>
+
+                  <div style={styles.liveChip}>
+                    <span style={styles.liveDot} />
+                    {liveLabel}
+                  </div>
                 </div>
+
                 <div style={styles.aiChips}>
                   <span style={styles.aiChip}>memory {memorySummary ? "live" : "empty"}</span>
                   <span style={styles.aiChip}>session {user ? "cloud" : "local"}</span>
@@ -1991,22 +2675,56 @@ export default function FutureMeClient() {
               <InteractiveGlassCard accent={accent} style={styles.threadCard}>
                 <div style={styles.threadGlow} />
                 <div style={styles.threadHeader}>
-                  <div style={styles.threadLeft}><div style={styles.avatar}>FM</div><div style={styles.threadText}><div style={styles.threadName}>Future Me</div><div style={styles.threadMeta}>private chat · persistent memory</div></div></div>
-                  <div style={styles.liveChip}><span style={styles.liveDot} />{liveLabel}</div>
+                  <div style={styles.threadLeft}>
+                    <div style={styles.avatar}>FM</div>
+                    <div style={styles.threadText}>
+                      <div style={styles.threadName}>Future Me</div>
+                      <div style={styles.threadMeta}>private chat · persistent memory</div>
+                    </div>
+                  </div>
+
+                  <div style={styles.liveChip}>
+                    <span style={styles.liveDot} />
+                    {liveLabel}
+                  </div>
                 </div>
 
                 <div ref={threadBodyRef} style={styles.threadBody} onScroll={handleThreadScroll}>
                   <div style={styles.stream}>
                     <AnimatePresence initial={false} mode="popLayout">
                       {messages.map((message) => (
-                        <MessageBubble key={message.id} message={message} isUser={message.role === "me"} styles={styles} copiedId={copiedId} onCopy={copyMessage} onOpenMenu={openMessageMenu} onLongPressStart={handleLongPressStart} onLongPressEnd={handleLongPressEnd} />
+                        <MessageBubble
+                          key={message.id}
+                          message={message}
+                          isUser={message.role === "me"}
+                          styles={styles}
+                          copiedId={copiedId}
+                          speakingId={speakingId}
+                          onCopy={copyMessage}
+                          onSpeak={speakMessage}
+                          onOpenMenu={openMessageMenu}
+                          onLongPressStart={handleLongPressStart}
+                          onLongPressEnd={handleLongPressEnd}
+                        />
                       ))}
                     </AnimatePresence>
 
                     <AnimatePresence initial={false}>
                       {loading ? (
-                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} style={styles.typingRow}>
-                          <div style={styles.typingBubble}><span style={styles.typingDots}><span style={styles.typingDot} /><span style={{ ...styles.typingDot, animationDelay: "120ms" }} /><span style={{ ...styles.typingDot, animationDelay: "240ms" }} /></span> typing…</div>
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          style={styles.typingRow}
+                        >
+                          <div style={styles.typingBubble}>
+                            <span style={styles.typingDots}>
+                              <span style={styles.typingDot} />
+                              <span style={{ ...styles.typingDot, animationDelay: "120ms" }} />
+                              <span style={{ ...styles.typingDot, animationDelay: "240ms" }} />
+                            </span>{" "}
+                            typing…
+                          </div>
                         </motion.div>
                       ) : null}
                     </AnimatePresence>
@@ -2015,85 +2733,264 @@ export default function FutureMeClient() {
                   </div>
                 </div>
 
-                {showScrollBottom && <button style={styles.scrollBottomBtn} onClick={() => { setShowScrollBottom(false); bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }}>↓</button>}
+                {showScrollBottom && (
+                  <button
+                    style={styles.scrollBottomBtn}
+                    onClick={() => {
+                      setShowScrollBottom(false);
+                      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+                    }}
+                  >
+                    ↓
+                  </button>
+                )}
               </InteractiveGlassCard>
 
               <InteractiveGlassCard accent={accent} style={styles.composerShell}>
-                <button style={styles.focusModeToggleBtn} title="Enter Focus Mode" onClick={() => setIsFocusMode(true)}>⛶</button>
-                <div style={styles.composerTop}><span style={styles.composerChip}>{moodLabels[mood]} mode</span><span style={styles.composerChip}>{memoryBadge}</span></div>
-                <div style={styles.composerRow}>
-                  <textarea ref={textareaRef} style={{ ...styles.composerTextarea, boxShadow: `inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 1px ${hexToRgba(accent, 0.02)}` }} value={input} onChange={handleTextareaChange} onKeyDown={handleKeyDown} placeholder={composerPlaceholder} rows={1} />
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.micButton} onClick={() => void startVoice()} disabled={loading}>{voiceListening ? "■" : "◉"}</motion.button>
-                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.96 }} style={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>{loading ? "Thinking..." : "Send"}</motion.button>
+                <div style={styles.composerTop}>
+                  <span style={styles.composerChip}>{moodLabels[mood]} mode</span>
+                  <span style={styles.composerChip}>{memoryBadge}</span>
                 </div>
-                <div style={styles.helper}>Press Enter to send · Shift+Enter for a new line · {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}</div>
-                <div style={styles.voiceHint}>Haptics fires on send and mood changes. Voice input uses the browser speech engine when available.</div>
+
+                <div style={styles.composerRow}>
+                  <textarea
+                    ref={textareaRef}
+                    style={{
+                      ...styles.composerTextarea,
+                      boxShadow: `inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 1px ${hexToRgba(accent, 0.02)}`,
+                    }}
+                    value={input}
+                    onChange={handleTextareaChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder={composerPlaceholder}
+                    rows={1}
+                  />
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={styles.micButton}
+                    onClick={() => void startVoice()}
+                    disabled={loading}
+                  >
+                    {voiceListening ? "■" : "◉"}
+                  </motion.button>
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.96 }}
+                    style={styles.sendButton}
+                    onClick={() => void sendMessage()}
+                    disabled={loading}
+                  >
+                    {loading ? "Thinking..." : "Send"}
+                  </motion.button>
+                </div>
+
+                <div style={styles.helper}>
+                  Press Enter to send · Shift+Enter for a new line ·{" "}
+                  {isPro ? "Pro memory active" : `${remainingToday} free messages left today`}
+                </div>
+
+                <div style={styles.voiceHint}>
+                  Haptics fires on send and mood changes. Voice input uses the browser speech engine when available.
+                </div>
               </InteractiveGlassCard>
             </motion.div>
           ) : (
-            <motion.div key="insights" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.22 }} style={{ display: "grid", gap: 14 }}>
+            <motion.div
+              key="insights"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.22 }}
+              style={{ display: "grid", gap: 14 }}
+            >
               <InteractiveGlassCard accent={accent} style={styles.hero}>
-                <div style={styles.heroTop}><span style={styles.badge}>Insights mode</span><span style={styles.badgeAccent}>patterns from your chats</span></div>
-                <div style={styles.heroTitle}>Your thoughts,<br />mapped into <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>patterns.</span></div>
-                <div style={styles.heroSub}>This view turns your conversation history into something you can actually read at a glance: recurring themes, activity over the week, and the emotional shape of the thread.</div>
+                <div style={styles.heroTop}>
+                  <span style={styles.badge}>Insights mode</span>
+                  <span style={styles.badgeAccent}>patterns from your chats</span>
+                </div>
+
+                <div style={styles.heroTitle}>
+                  Your thoughts,
+                  <br />
+                  mapped into{" "}
+                  <span style={{ color: accent, textShadow: `0 0 20px ${hexToRgba(accent, 0.4)}` }}>
+                    patterns.
+                  </span>
+                </div>
+
+                <div style={styles.heroSub}>
+                  This view turns your conversation history into something you can actually read at a glance: recurring
+                  themes, activity over the week, and the emotional shape of the thread.
+                </div>
               </InteractiveGlassCard>
 
               <div style={styles.insightsGrid}>
                 <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                   <div style={styles.insightTitle}>Week Activity</div>
                   <div style={styles.insightSub}>Messages per day across the last 7 days.</div>
+
                   <div style={styles.sparkWrap}>
                     <div style={styles.sparkBars}>
                       {insights.weeklyActivity.map((value, index) => {
                         const max = Math.max(1, ...insights.weeklyActivity);
-                        return <div key={index} style={styles.sparkBar}><div style={{ ...styles.sparkFill, height: `${Math.max(12, (value / max) * 100)}%` }} /></div>;
+                        const height = `${Math.max(12, (value / max) * 100)}%`;
+                        return (
+                          <div key={index} style={styles.sparkBar}>
+                            <div style={{ ...styles.sparkFill, height }} />
+                          </div>
+                        );
                       })}
                     </div>
-                    <div style={styles.sparkLabelRow}>{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}</div>
+                    <div style={styles.sparkLabelRow}>
+                      {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                        <span key={day}>{day}</span>
+                      ))}
+                    </div>
                   </div>
                 </InteractiveGlassCard>
 
                 <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                   <div style={styles.insightTitle}>Snapshot</div>
                   <div style={styles.insightSub}>A quick summary of the thread shape right now.</div>
+
                   <div style={styles.miniCards}>
-                    <div style={styles.miniCard}><div style={styles.miniValue}>{insights.totalUserMessages}</div><div style={styles.miniLabel}>User messages</div></div>
-                    <div style={styles.miniCard}><div style={styles.miniValue}>{insights.avgLength}</div><div style={styles.miniLabel}>Avg. length</div></div>
-                    <div style={styles.miniCard}><div style={styles.miniValue}>{insights.dominantTone}</div><div style={styles.miniLabel}>Dominant tone</div></div>
-                    <div style={styles.miniCard}><div style={styles.miniValue}>{retrievedMemories.length}</div><div style={styles.miniLabel}>RAG memories</div></div>
+                    <div style={styles.miniCard}>
+                      <div style={styles.miniValue}>{insights.totalUserMessages}</div>
+                      <div style={styles.miniLabel}>User messages</div>
+                    </div>
+                    <div style={styles.miniCard}>
+                      <div style={styles.miniValue}>{insights.avgLength}</div>
+                      <div style={styles.miniLabel}>Avg. length</div>
+                    </div>
+                    <div style={styles.miniCard}>
+                      <div style={styles.miniValue}>{insights.dominantTone}</div>
+                      <div style={styles.miniLabel}>Dominant tone</div>
+                    </div>
+                    <div style={styles.miniCard}>
+                      <div style={styles.miniValue}>{retrievedMemories.length}</div>
+                      <div style={styles.miniLabel}>RAG memories</div>
+                    </div>
                   </div>
-                  <div style={styles.voiceHint}>If you add pgvector + embeddings, this panel can surface actual long-term memory matches instead of only the local fallback.</div>
+
+                  <div style={styles.voiceHint}>
+                    If you add pgvector + embeddings, this panel can surface actual long-term memory matches instead of
+                    only the local fallback.
+                  </div>
                 </InteractiveGlassCard>
               </div>
 
               <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                 <div style={styles.insightTitle}>Mood Trend</div>
                 <div style={styles.insightSub}>How the AI modes matched your thoughts over the last 7 days.</div>
+
                 <div style={{ position: "relative", height: 160, marginTop: 20, width: "100%" }}>
                   <svg width="100%" height="100%" viewBox="0 0 700 160" preserveAspectRatio="none">
                     {(Object.keys(insights.moodTrend) as Mood[]).map((mKey) => {
                       const data = insights.moodTrend[mKey];
                       const maxVal = Math.max(1, ...Object.values(insights.moodTrend).flat());
-                      const points = data.map((val, i) => `${(i / 6) * 700},${160 - (val / maxVal) * 140}`).join(" L ");
-                      return <path key={mKey} d={`M ${points}`} fill="none" stroke={accentMap[mKey]} strokeWidth={mKey === mood ? 4 : 2} strokeLinecap="round" strokeLinejoin="round" opacity={mKey === mood ? 1 : 0.3} style={{ transition: "all 0.4s ease" }} />;
+                      const points = data
+                        .map((val, i) => {
+                          const x = (i / 6) * 700;
+                          const y = 160 - (val / maxVal) * 140;
+                          return `${x},${y}`;
+                        })
+                        .join(" L ");
+
+                      return (
+                        <path
+                          key={mKey}
+                          d={`M ${points}`}
+                          fill="none"
+                          stroke={accentMap[mKey]}
+                          strokeWidth={mKey === mood ? 4 : 2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          opacity={mKey === mood ? 1 : 0.3}
+                          style={{ transition: "all 0.4s ease" }}
+                        />
+                      );
                     })}
                   </svg>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11, color: "rgba(255,255,255,0.62)" }}>
-                    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span key={day}>{day}</span>)}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      marginTop: 8,
+                      fontSize: 11,
+                      color: "rgba(255,255,255,0.62)",
+                    }}
+                  >
+                    <span>Mon</span>
+                    <span>Tue</span>
+                    <span>Wed</span>
+                    <span>Thu</span>
+                    <span>Fri</span>
+                    <span>Sat</span>
+                    <span>Sun</span>
                   </div>
+                </div>
+              </InteractiveGlassCard>
+
+              <InteractiveGlassCard accent={accent} style={styles.memoryJourney}>
+                <div style={styles.insightTitle}>Journey</div>
+                <div style={styles.insightSub}>A growing path that reflects repeated conversations and consistency.</div>
+
+                <div style={styles.journeyTrack}>
+                  <div style={styles.journeyGlow} />
+                  <div style={styles.journeyPath} />
+                  {insights.weeklyActivity.map((count, index) => {
+                    const left = 12 + index * 13.5;
+                    const top = 60 + Math.max(0, 4 - count) * 12;
+                    return (
+                      <motion.div
+                        key={index}
+                        style={{
+                          ...styles.journeyNode,
+                          left: `${left}%`,
+                          top: `${top}%`,
+                          transform: `scale(${0.8 + Math.min(count, 6) * 0.08})`,
+                          opacity: count > 0 ? 1 : 0.35,
+                        }}
+                        animate={{
+                          y: [0, -2, 0],
+                        }}
+                        transition={{
+                          duration: 2.2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                          delay: index * 0.15,
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               </InteractiveGlassCard>
 
               <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                 <div style={styles.insightTitle}>Recurring themes</div>
                 <div style={styles.insightSub}>Interactive word cloud based on frequency.</div>
+
                 <div style={styles.themeBubbleContainer}>
-                  {(insights.topThemes.length > 0 ? insights.topThemes : [{ label: "No clear themes yet", count: 1 }]).map((item) => {
+                  {(insights.topThemes.length > 0
+                    ? insights.topThemes
+                    : [{ label: "No clear themes yet", count: 1 }]).map((item) => {
                     const max = Math.max(1, ...insights.topThemes.map((t) => t.count), 1);
                     const scale = 0.5 + (item.count / max) * 0.5;
                     const size = 60 + scale * 50;
                     return (
-                      <div key={item.label} style={{ ...styles.themeBubble, width: size, height: size, fontSize: 10 + scale * 6, background: `radial-gradient(circle at 30% 30%, ${hexToRgba(accent, 0.8)}, ${hexToRgba(accent, 0.2)})` }}>
+                      <div
+                        key={item.label}
+                        style={{
+                          ...styles.themeBubble,
+                          width: size,
+                          height: size,
+                          fontSize: 10 + scale * 6,
+                          background: `radial-gradient(circle at 30% 30%, ${hexToRgba(accent, 0.8)}, ${hexToRgba(accent, 0.2)})`,
+                        }}
+                      >
                         {item.label}
                       </div>
                     );
@@ -2103,10 +3000,22 @@ export default function FutureMeClient() {
 
               <InteractiveGlassCard accent={accent} style={styles.insightCard}>
                 <div style={styles.insightTitle}>Long-term memories</div>
-                <div style={styles.insightSub}>Retrieved via the RAG hook. Add Supabase vector search to make these real across weeks and months.</div>
+                <div style={styles.insightSub}>
+                  Retrieved via the RAG hook. Add Supabase vector search to make these real across weeks and months.
+                </div>
+
                 <div style={styles.memoryPills}>
-                  {(retrievedMemories.length > 0 ? retrievedMemories : ["No vector hits yet.", "Connect /api/memory/search and pgvector for real recall.", "The app is already wired to send the context."]).map((item, idx) => (
-                    <span key={`${item}-${idx}`} style={styles.memoryPill}>{item}</span>
+                  {(retrievedMemories.length > 0
+                    ? retrievedMemories
+                    : [
+                        "No vector hits yet.",
+                        "Connect /api/memory/search and pgvector for real recall.",
+                        "The app is already wired to send the context.",
+                      ]
+                  ).map((item, idx) => (
+                    <span key={`${item}-${idx}`} style={styles.memoryPill}>
+                      {item}
+                    </span>
                   ))}
                 </div>
               </InteractiveGlassCard>
@@ -2117,4 +3026,3 @@ export default function FutureMeClient() {
     </main>
   );
 }
-
