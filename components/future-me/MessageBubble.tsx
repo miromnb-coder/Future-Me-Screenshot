@@ -9,7 +9,9 @@ export function MessageBubble({
   isUser,
   styles,
   copiedId,
+  speakingId,
   onCopy,
+  onSpeak,
   onOpenMenu,
   onLongPressStart,
   onLongPressEnd,
@@ -18,7 +20,9 @@ export function MessageBubble({
   isUser: boolean;
   styles: Record<string, CSSProperties>;
   copiedId: string | null;
+  speakingId: string | null;
   onCopy: (text: string, id: string) => void;
+  onSpeak?: (message: Message) => void;
   onOpenMenu: (message: Message, x: number, y: number) => void;
   onLongPressStart: (message: Message) => (e: ReactPointerEvent<HTMLElement>) => void;
   onLongPressEnd: () => void;
@@ -54,13 +58,17 @@ export function MessageBubble({
       >
         <div style={styles.messageTop}>
           <span style={roleStyle}>{isUser ? "You" : "Future Me"}</span>
-          <button
-            type="button"
-            style={styles.copyButton}
-            onClick={() => onCopy(message.text, message.id)}
-          >
-            {copiedId === message.id ? "Copied" : "Copy"}
-          </button>
+
+          <div style={{ display: "flex", gap: 6 }}>
+            {!isUser && onSpeak ? (
+              <button type="button" style={styles.copyButton} onClick={() => onSpeak(message)}>
+                {speakingId === message.id ? "Stop" : "🔊"}
+              </button>
+            ) : null}
+            <button type="button" style={styles.copyButton} onClick={() => onCopy(message.text, message.id)}>
+              {copiedId === message.id ? "Copied" : "Copy"}
+            </button>
+          </div>
         </div>
 
         <div style={styles.messageText}>{message.text}</div>
