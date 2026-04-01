@@ -4,7 +4,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageBubble } from "./MessageBubble";
 import { Composer } from "./Composer";
-import WelcomeScreen from './WelcomeScreen';
+
 
 import {
   type Message,
@@ -39,9 +39,12 @@ export function ChatView({
       transition={{ duration: 0.22 }}
       className="grid gap-3.5"
     >
-      {!hasConversationStarted ? (
-        <WelcomeScreen />
+            {!hasConversationStarted ? (
+        <div className="p-10 text-center text-white/50">
+          Valmiina ottamaan kuvakaappauksia!
+        </div>
       ) : (
+
         <div className="grid gap-3.5">
           <div className="flex flex-wrap gap-2.5 px-1">
             {/* TODO: Add status pills */}
