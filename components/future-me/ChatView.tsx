@@ -4,7 +4,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageBubble } from "./MessageBubble";
 import { Composer } from "./Composer";
-import { WelcomeScreen } from "./WelcomeScreen";
+import WelcomeScreen from './WelcomeScreen';
+
 import {
   type Message,
   type Mood,
