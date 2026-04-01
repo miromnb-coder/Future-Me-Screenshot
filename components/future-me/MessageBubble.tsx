@@ -7,27 +7,30 @@ import type { Message } from "@/lib/futureMe";
 export function MessageBubble({
   message,
   isUser,
-  styles,
-  copiedId,
-  speakingId,
-  onCopy,
+  styles = {}, // Lisätty oletusarvo, ettei se ole undefined
+  copiedId = null,
+  speakingId = null,
+  onCopy = () => {},
   onSpeak,
-  onOpenMenu,
-  onLongPressStart,
-  onLongPressEnd,
+  onOpenMenu = () => {},
+  onLongPressStart = () => () => {},
+  onLongPressEnd = () => {},
 }: {
   message: Message;
   isUser: boolean;
-  styles: Record<string, CSSProperties>;
-  copiedId: string | null;
-  speakingId: string | null;
-  onCopy: (text: string, id: string) => void;
+  styles?: Record<string, CSSProperties>;
+  copiedId?: string | null;
+  speakingId?: string | null;
+  onCopy?: (text: string, id: string) => void;
   onSpeak?: (message: Message) => void;
-  onOpenMenu: (message: Message, x: number, y: number) => void;
-  onLongPressStart: (message: Message) => (e: ReactPointerEvent<HTMLElement>) => void;
-  onLongPressEnd: () => void;
+  onOpenMenu?: (message: Message, x: number, y: number) => void;
+  onLongPressStart?: (message: Message) => (e: ReactPointerEvent<HTMLElement>) => void;
+  onLongPressEnd?: () => void;
 }) {
-  const roleStyle = isUser ? { ...styles.messageRole, ...styles.messageRoleMe } : styles.messageRole;
+  // Käytetään optional chainingia (?.) tyyleissä
+  const roleStyle = isUser 
+    ? { ...(styles?.messageRole || {}), ...(styles?.messageRoleMe || {}) } 
+    : (styles?.messageRole || {});
 
   return (
     <motion.div
@@ -37,42 +40,47 @@ export function MessageBubble({
       exit={{ opacity: 0, y: -10, scale: 0.985 }}
       transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
       style={{
-        ...styles.messageRow,
+        ...(styles?.messageRow || {}),
+        display: "flex",
         justifyContent: isUser ? "flex-end" : "flex-start",
-        animation: "floatIn 220ms ease both",
       }}
     >
       <article
-        onPointerDown={onLongPressStart(message)}
+        onPointerDown={onLongPressStart?.(message)}
         onPointerUp={onLongPressEnd}
         onPointerCancel={onLongPressEnd}
         onPointerLeave={onLongPressEnd}
         onContextMenu={(e) => {
           e.preventDefault();
-          onOpenMenu(message, e.clientX, e.clientY);
+          onOpenMenu?.(message, e.clientX, e.clientY);
         }}
+        className={`p-4 rounded-3xl max-w-[85%] ${
+          isUser ? "bg-blue-600 text-white" : "bg-white/10 text-white border border-white/10"
+        }`}
         style={{
-          ...styles.messageBubble,
-          ...(isUser ? styles.meBubble : styles.futureMeBubble),
+          ...(styles?.messageBubble || {}),
+          ...(isUser ? (styles?.meBubble || {}) : (styles?.futureMeBubble || {})),
         }}
       >
-        <div style={styles.messageTop}>
-          <span style={roleStyle}>{isUser ? "You" : "Future Me"}</span>
+        <div className="flex justify-between items-center gap-4 mb-1">
+          <span className="text-xs font-bold opacity-50" style={roleStyle}>
+            {isUser ? "Sinä" : "Future Me"}
+          </span>
 
-          <div style={{ display: "flex", gap: 6 }}>
-            {!isUser && onSpeak ? (
-              <button type="button" style={styles.copyButton} onClick={() => onSpeak(message)}>
+          <div className="flex gap-2">
+            {!isUser && onSpeak && (
+              <button className="text-xs opacity-50 hover:opacity-100" onClick={() => onSpeak(message)}>
                 {speakingId === message.id ? "Stop" : "🔊"}
               </button>
-            ) : null}
-            <button type="button" style={styles.copyButton} onClick={() => onCopy(message.text, message.id)}>
-              {copiedId === message.id ? "Copied" : "Copy"}
+            )}
+            <button className="text-xs opacity-50 hover:opacity-100" onClick={() => onCopy(message.text, message.id)}>
+              {copiedId === message.id ? "Kopioitu" : "Kopioi"}
             </button>
           </div>
         </div>
 
-        <div style={styles.messageText}>{message.text}</div>
-        <div style={styles.timestamp}>{message.time}</div>
+        <div className="text-sm leading-relaxed">{message.text}</div>
+        <div className="text-[10px] opacity-30 mt-2 text-right">{message.time}</div>
       </article>
     </motion.div>
   );
